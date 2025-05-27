@@ -1,7 +1,7 @@
 'use client'
 import { useTransition } from 'react';
 import { addTask, toggleTask, deleteTask } from '@/lib/actions/tasks';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -24,9 +24,11 @@ export function TaskPanel({ tasks }: { tasks: any[] }) {
                   defaultChecked={task.completed}
                   onCheckedChange={(v) => startTransition(() => toggleTask(task.id, !!v))}
                 />
-                <span className="truncate font-semibold text-sm">{task.title}</span>
+                <span className="truncate font-semibold text-sm">{task.name}</span>
               </CardTitle>
             </CardHeader>
+          
+            <CardDescription>  <span className='truncate font-semibold text-sm ml-6'>{task.description}</span></CardDescription>
             <CardContent className="flex items-center justify-between">
               {task.dueDate ? (
                 <Badge variant="secondary">Due {format(new Date(task.dueDate), 'MMM d')}</Badge>
@@ -52,13 +54,20 @@ function AddTaskForm({ loading, onAdd }: { loading: boolean; onAdd: (fd: FormDat
   return (
     <form
       action={onAdd}
-      className="flex items-end gap-2 md:gap-4"
+      className="flex flex-col gap-2 md:gap-4"
     >
+    
+      <div className="flex items-end gap-2 md:gap-4">
       <Input
         name="title"
         placeholder="New task…"
         className="flex-1"
         required
+      />
+      <Input
+        name="time"
+        type="time"
+        className="w-32"
       />
       <Input
         name="due"
@@ -68,6 +77,13 @@ function AddTaskForm({ loading, onAdd }: { loading: boolean; onAdd: (fd: FormDat
       <Button type="submit" disabled={loading}>
         {loading ? 'Adding…' : 'Add'}
       </Button>
+      </div>
+      <Input 
+      name="description" 
+      placeholder="Add Description" 
+      className="w-full" 
+      required 
+      />
     </form>
   );
 }
