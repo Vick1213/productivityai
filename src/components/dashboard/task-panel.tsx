@@ -1,7 +1,14 @@
-'use client'
+'use client';
+
 import { useTransition } from 'react';
 import { addTask, toggleTask, deleteTask } from '@/lib/actions/tasks';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -15,7 +22,7 @@ export function TaskPanel({ tasks }: { tasks: any[] }) {
     <section className="grid gap-6 p-6">
       <AddTaskForm loading={isPending} onAdd={(fd) => startTransition(() => addTask(fd))} />
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {tasks.map((task) => (
           <Card key={task.id} className={task.completed ? 'opacity-60' : ''}>
             <CardHeader>
@@ -24,16 +31,20 @@ export function TaskPanel({ tasks }: { tasks: any[] }) {
                   defaultChecked={task.completed}
                   onCheckedChange={(v) => startTransition(() => toggleTask(task.id, !!v))}
                 />
-                <span className="truncate font-semibold text-sm">{task.name}</span>
+                <span className="truncate text-sm font-semibold">{task.name}</span>
               </CardTitle>
             </CardHeader>
-          
-            <CardDescription>  <span className='truncate font-semibold text-sm ml-6'>{task.description}</span></CardDescription>
+
+            <CardDescription>
+              <span className="ml-6 truncate text-sm font-semibold">{task.description}</span>
+            </CardDescription>
             <CardContent className="flex items-center justify-between">
               {task.dueDate ? (
-                <Badge variant="secondary">Due {format(new Date(task.dueDate), 'MMM d')}</Badge>
+                <Badge variant="secondary">
+                  Due {format(new Date(task.dueDate), 'MMM d')}
+                </Badge>
               ) : (
-                <span className="text-sm text-muted-foreground">No due date</span>
+                <span className="text-sm text-muted-foreground">No due date</span>
               )}
               <Button
                 variant="ghost"
@@ -50,40 +61,36 @@ export function TaskPanel({ tasks }: { tasks: any[] }) {
   );
 }
 
-function AddTaskForm({ loading, onAdd }: { loading: boolean; onAdd: (fd: FormData) => void }) {
+function AddTaskForm({
+  loading,
+  onAdd,
+}: {
+  loading: boolean;
+  onAdd: (fd: FormData) => void;
+}) {
   return (
-    <form
-      action={onAdd}
-      className="flex flex-col gap-2 md:gap-4"
-    >
-    
-      <div className="flex items-end gap-2 md:gap-4">
-      <Input
-        name="title"
-        placeholder="New task…"
-        className="flex-1"
-        required
-      />
-      <Input
-        name="time"
-        type="time"
-        className="w-32"
-      />
-      <Input
-        name="due"
-        type="date"
-        className="w-36"
-      />
-      <Button type="submit" disabled={loading}>
-        {loading ? 'Adding…' : 'Add'}
-      </Button>
+    <form action={onAdd} className="flex flex-col gap-4">
+      <Input name="title" placeholder="New task…" className="flex-1" required />
+
+      <div className="flex flex-wrap items-end gap-4">
+        {/* Start date/time */}
+        <div className="flex flex-col">
+          <label className="mb-1 text-xs font-medium text-muted-foreground">Starts</label>
+          <Input name="start" type="datetime-local" className="w-56" required />
+        </div>
+
+        {/* Due date/time */}
+        <div className="flex flex-col">
+          <label className="mb-1 text-xs font-medium text-muted-foreground">Due</label>
+          <Input name="due" type="datetime-local" className="w-56" />
+        </div>
+
+        <Button type="submit" disabled={loading} className="self-end">
+          {loading ? 'Adding…' : 'Add'}
+        </Button>
       </div>
-      <Input 
-      name="description" 
-      placeholder="Add Description" 
-      className="w-full" 
-      required 
-      />
+
+      <Input name="description" placeholder="Add description" className="w-full" />
     </form>
   );
 }

@@ -1,43 +1,70 @@
-// app/(dashboard)/calendar/page.tsx
+'use server';
 
-import prisma from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
-import { CalendarPanel } from "@/components/dashboard/calendar";
+import prisma from '@/lib/prisma';
+import { auth } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
+import { CalendarPanel } from '@/components/dashboard/calendar';
+import { Priority } from '@prisma/client';
 
-/**
- * Stand‑alone Calendar page
- * ---------------------------------------------
- * Renders the same calendar used in the sidebar but full‑width, so users can
- * browse tasks by month without the task list.
- */
+// Shape expected by <CalendarPanel>
+interface CalendarTask {
+  id: string;
+  name: string;
+  description: string;
+  priority: Priority;
+  completed: boolean;
+  // legacy props consumed by CalendarPanel
+  date: string;   // ISO date portion (yyyy-mm-dd)
+  time: string;   // ISO time portion or full ISO if component trims
+  dueDate: string; // full ISO (compat)
+  // new props
+  startsAt: string; // ISO
+  dueAt: string;   // ISO
+}
+
 export default async function CalendarPage() {
   const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  if (!userId) redirect('/sign-in');
 
+  // grab all tasks belonging to the user, ordered by the new dueAt field
   const raw = await prisma.task.findMany({
     where: { userId },
-    orderBy: { dueDate: "asc" },
+    orderBy: { dueAt: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      priority: true,
+      completed: true,
+      startsAt: true,
+      dueAt: true,
+    },
   });
 
-  // Convert Date → ISO string so it matches CalendarPanel props
-  const tasks = raw.map(({ dueDate, ...rest }) => ({
-    ...rest,
-    dueDate: dueDate.toISOString(),
-  }));
+  const tasks: CalendarTask[] = raw.map((t) => {
+    const startsISO = t.startsAt.toISOString();
+    const dueISO = t.dueAt.toISOString();
+
+    return {
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      priority: t.priority,
+      completed: t.completed,
+      // legacy keys
+      date: dueISO.split('T')[0],
+      time: startsISO,
+      dueDate: dueISO,
+      // new keys
+      startsAt: startsISO,
+      dueAt: dueISO,
+    };
+  });
 
   return (
-    <section className="max-w-screen-lg mx-auto p-4 lg:p-8">
-      <h1 className="text-2xl font-bold mb-6">Calendar</h1>
-      <CalendarPanel tasks={tasks} />
+    <section className="mx-auto max-w-screen-lg p-4 lg:p-8">
+      <h1 className="mb-6 text-2xl font-bold">Calendar</h1>
+      <CalendarPanel tasks={tasks as any} />
     </section>
   );
 }
-
-/* ----------------------------------------------------------- */
-/*  Routing Notes                                              */
-/* ----------------------------------------------------------- */
-// 1. Place this file under app/(dashboard)/calendar/page.tsx if your routes are
-//    segmented, or directly under app/calendar/page.tsx for a top‑level route.
-// 2. The `"use client";` directive lets CalendarPanel manage its own state.
-// 3. Styling assumes Tailwind + shadcn; adjust as needed.
