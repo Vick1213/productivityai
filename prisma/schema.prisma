@@ -45,6 +45,8 @@ model User {
   email          String   @unique
   firstName      String
   lastName       String
+  openAIKey       String?
+  openAIModel    String? @default("gpt-3.5-turbo")
   jobTitle       String?
   role           String?
   preferences    Json?
