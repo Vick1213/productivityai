@@ -46,7 +46,7 @@ export default function TeamPage() {
         <h1 className="text-2xl font-semibold tracking-tight">
           You’re not part of a team yet
         </h1>
-        <Link href="/team/create">
+        <Link href="/dashboard/team/create">
           <Button>Create a team</Button>
         </Link>
       </div>
