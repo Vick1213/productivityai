@@ -64,6 +64,19 @@ const taskTool = {
 //  OpenAI client + function‑calling schema
 // ─────────────────────────────────────────────────────────────────────────────
 
+const { userId } = await auth();
+
+
+// get user's OpenAI key from database
+const user = userId ? await prisma.user.findUnique({
+    where: { id: userId },
+    select: { openAIKey: true }
+}) : null;
+
+// use user's OpenAI key if available
+const apiKey = user?.openAIKey;
+  
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const FUNCTIONS: OpenAI.Chat.ChatCompletionCreateParams.Function[] = [
