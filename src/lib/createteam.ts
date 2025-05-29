@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { Resend } from 'resend';
 import { v4 as uuid } from 'uuid';
 import { revalidatePath } from 'next/cache';
+import { NextApiHandler } from 'next';
 
 export async function createTeam(form: FormData) {
   const { userId } = await auth();

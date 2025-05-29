@@ -1,42 +1,5 @@
-/*
-  Warnings:
-
-  - You are about to drop the column `date` on the `Task` table. All the data in the column will be lost.
-  - You are about to drop the column `dueDate` on the `Task` table. All the data in the column will be lost.
-  - You are about to drop the column `time` on the `Task` table. All the data in the column will be lost.
-  - A unique constraint covering the columns `[projectId,name]` on the table `Task` will be added. If there are existing duplicate values, this will fail.
-  - Added the required column `dueAt` to the `Task` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `startsAt` to the `Task` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `organizationId` to the `User` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `updatedAt` to the `User` table without a default value. This is not possible if the table is not empty.
-
-*/
 -- CreateEnum
 CREATE TYPE "Priority" AS ENUM ('LOW', 'MEDIUM', 'HIGH');
-
--- DropIndex
-DROP INDEX "User_id_key";
-
--- AlterTable
-ALTER TABLE "Task" DROP COLUMN "date",
-DROP COLUMN "dueDate",
-DROP COLUMN "time",
-ADD COLUMN     "dueAt" TIMESTAMP(3) NOT NULL,
-ADD COLUMN     "notes" TEXT,
-ADD COLUMN     "priority" "Priority" NOT NULL DEFAULT 'LOW',
-ADD COLUMN     "projectId" TEXT,
-ADD COLUMN     "startsAt" TIMESTAMP(3) NOT NULL,
-ALTER COLUMN "aiInstructions" DROP NOT NULL;
-
--- AlterTable
-ALTER TABLE "User" ADD COLUMN     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-ADD COLUMN     "endTime" TEXT,
-ADD COLUMN     "jobTitle" TEXT,
-ADD COLUMN     "organizationId" TEXT NOT NULL,
-ADD COLUMN     "preferences" JSONB,
-ADD COLUMN     "role" TEXT,
-ADD COLUMN     "startTime" TEXT,
-ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL;
 
 -- CreateTable
 CREATE TABLE "Organization" (
@@ -61,11 +24,50 @@ CREATE TABLE "Project" (
 );
 
 -- CreateTable
+CREATE TABLE "User" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "firstName" TEXT NOT NULL,
+    "lastName" TEXT NOT NULL,
+    "openAIKey" TEXT,
+    "openAIModel" TEXT DEFAULT 'gpt-3.5-turbo',
+    "jobTitle" TEXT,
+    "role" TEXT,
+    "preferences" JSONB,
+    "startTime" TEXT,
+    "endTime" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "organizationId" TEXT,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Tag" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
 
     CONSTRAINT "Tag_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Task" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "notes" TEXT,
+    "aiInstructions" TEXT,
+    "priority" "Priority" NOT NULL DEFAULT 'LOW',
+    "startsAt" TIMESTAMP(3) NOT NULL,
+    "dueAt" TIMESTAMP(3) NOT NULL,
+    "completed" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "userId" TEXT NOT NULL,
+    "projectId" TEXT,
+
+    CONSTRAINT "Task_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -114,7 +116,19 @@ CREATE UNIQUE INDEX "Organization_name_key" ON "Organization"("name");
 CREATE UNIQUE INDEX "Project_organizationId_name_key" ON "Project"("organizationId", "name");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Tag_name_key" ON "Tag"("name");
+
+-- CreateIndex
+CREATE INDEX "Task_dueAt_idx" ON "Task"("dueAt");
+
+-- CreateIndex
+CREATE INDEX "Task_userId_idx" ON "Task"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Task_projectId_name_key" ON "Task"("projectId", "name");
 
 -- CreateIndex
 CREATE INDEX "ActivityLog_taskId_idx" ON "ActivityLog"("taskId");
@@ -128,20 +142,14 @@ CREATE INDEX "_UserProjects_B_index" ON "_UserProjects"("B");
 -- CreateIndex
 CREATE INDEX "_TaskTags_B_index" ON "_TaskTags"("B");
 
--- CreateIndex
-CREATE INDEX "Task_dueAt_idx" ON "Task"("dueAt");
-
--- CreateIndex
-CREATE INDEX "Task_userId_idx" ON "Task"("userId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "Task_projectId_name_key" ON "Task"("projectId", "name");
-
 -- AddForeignKey
 ALTER TABLE "Project" ADD CONSTRAINT "Project_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "User" ADD CONSTRAINT "User_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "User" ADD CONSTRAINT "User_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Task" ADD CONSTRAINT "Task_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Task" ADD CONSTRAINT "Task_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;
