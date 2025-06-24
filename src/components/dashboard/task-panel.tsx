@@ -86,7 +86,7 @@ function AddTaskForm({
           <label className="mb-1 text-xs font-medium text-muted-foreground">
             Starts&nbsp;•&nbsp;Time
           </label>
-          <Input name="time" type="time" className="w-32" required />
+          <Input name="startTime" type="time" className="w-32" required />
         </div>
 
         {/* ------------- due date / time ------------- */}
@@ -94,7 +94,7 @@ function AddTaskForm({
           <label className="mb-1 text-xs font-medium text-muted-foreground">
             Due&nbsp;•&nbsp;Date
           </label>
-          <Input name="dueAt" type="date" className="w-40" />
+          <Input name="dueDate" type="date" className="w-40" />
         </div>
 
         <div className="flex flex-col">

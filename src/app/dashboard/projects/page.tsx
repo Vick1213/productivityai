@@ -30,6 +30,8 @@ export default async function ProjectsPage() {
   return (
     <section className="mx-auto max-w-2xl p-6">
       <CreateProjectForm unassignedTasks={tasks} />
+
+    
     </section>
   );
 }
