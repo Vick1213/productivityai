@@ -1,6 +1,6 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useActionState, useTransition } from 'react';
 import { useFormState } from 'react-dom';
 import { createTeam as createTeamAction } from '@/lib/createteam';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ type FormState = {
 export default function CreateTeamForm() {
   const [isPending, startTransition] = useTransition();
   const createTeam = (prevState: FormState, formData: FormData) => createTeamAction(formData);
-  const [state, formAction] = useFormState<FormState, FormData>(createTeam, null);
+  const [state, formAction] = useActionState<FormState, FormData>(createTeam, null);
 
   return (
     <Card>

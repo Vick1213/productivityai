@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import useSWR from "swr";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -13,9 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import { Organization, Member, Project, Note } from "@/types/team";
-import useSWR from "swr";
 
 /**
  * Tiny fetcher helper so we can use SWR.
@@ -117,7 +117,11 @@ function MembersPane({ members }: { members: Member[] }) {
               </p>
             )}
           </div>
-          {m.role && <Badge className="shrink-0" variant="secondary">{m.role}</Badge>}
+          {m.role && (
+            <Badge className="shrink-0" variant="secondary">
+              {m.role}
+            </Badge>
+          )}
         </Card>
       ))}
       {/* New member card */}
@@ -168,8 +172,8 @@ function ProjectsPane({ projects }: { projects: Project[] }) {
 // ──────────────────────────────────────────────────────────────
 //  Component: Notes pane
 // ──────────────────────────────────────────────────────────────
-function NotesPane({ notes }: { notes: Note[] }) {
-  if (!notes.length) {
+function NotesPane({ notes = [] }: { notes?: Note[] }) {
+  if (notes.length === 0) {
     return (
       <div className="flex flex-col items-center gap-4 py-8">
         <p className="text-muted-foreground">No notes yet</p>
@@ -238,8 +242,8 @@ function ErrorState({ message }: { message: string }) {
 }
 
 // ──────────────────────────────────────────────────────────────
-//  Utility: classnames helper – keeps imports tidy
+//  Utility: simple classnames helper (optional)
 // ──────────────────────────────────────────────────────────────
-function clsx(...classes: (string | false | undefined)[]) {
+function clsx(...classes: (string | false | undefined)[]): string {
   return classes.filter(Boolean).join(" ");
 }
