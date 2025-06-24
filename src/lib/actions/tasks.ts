@@ -40,7 +40,10 @@ export async function addTask(form: FormData) {
   const dateStr   = form.get('date')?.toString(); // yyyy-MM-dd
   const timeStr   = form.get('time')?.toString(); // HH:mm
   const startsAt  = toDateTime(dateStr, timeStr);
-  const dueAt     = startsAt; // same for now; you can extend with separate fields
+  const dueAtStr     = form.get('dueAt')?.toString();
+  const dueAttimeStr = form.get('dueTime')?.toString();
+
+  const dueAt =toDateTime(dueAtStr, dueAttimeStr); // optional, so null if empty
 
   const description     = form.get('description')?.toString() ?? '';
   const aiInstructions  = form.get('ai')?.toString() ?? '';

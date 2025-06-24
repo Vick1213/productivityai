@@ -70,19 +70,54 @@ function AddTaskForm({
 }) {
   return (
     <form action={onAdd} className="flex flex-col gap-4">
-      <Input name="title" placeholder="New task…" className="flex-1" required />
+      {/* ------------- title ------------- */}
+      <Input name="title" placeholder="New task…" required />
 
+      {/* ------------- start date / time ------------- */}
       <div className="flex flex-wrap items-end gap-4">
-        {/* Start date/time */}
         <div className="flex flex-col">
-          <label className="mb-1 text-xs font-medium text-muted-foreground">Starts</label>
-          <Input name="start" type="datetime-local" className="w-56" required />
+          <label className="mb-1 text-xs font-medium text-muted-foreground">
+            Starts&nbsp;•&nbsp;Date
+          </label>
+          <Input name="date" type="date" className="w-40" required />
         </div>
 
-        {/* Due date/time */}
         <div className="flex flex-col">
-          <label className="mb-1 text-xs font-medium text-muted-foreground">Due</label>
-          <Input name="due" type="datetime-local" className="w-56" />
+          <label className="mb-1 text-xs font-medium text-muted-foreground">
+            Starts&nbsp;•&nbsp;Time
+          </label>
+          <Input name="time" type="time" className="w-32" required />
+        </div>
+
+        {/* ------------- due date / time ------------- */}
+        <div className="flex flex-col">
+          <label className="mb-1 text-xs font-medium text-muted-foreground">
+            Due&nbsp;•&nbsp;Date
+          </label>
+          <Input name="dueAt" type="date" className="w-40" />
+        </div>
+
+        <div className="flex flex-col">
+          <label className="mb-1 text-xs font-medium text-muted-foreground">
+            Due&nbsp;•&nbsp;Time
+          </label>
+          <Input name="dueTime" type="time" className="w-32" />
+        </div>
+
+        {/* ------------- priority ------------- */}
+        <div className="flex flex-col">
+          <label className="mb-1 text-xs font-medium text-muted-foreground">
+            Priority
+          </label>
+          <select
+            name="priority"
+            defaultValue="LOW"
+            className="w-28 rounded-md border p-2 text-sm"
+          >
+            <option value="LOW">Low</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="HIGH">High</option>
+          </select>
         </div>
 
         <Button type="submit" disabled={loading} className="self-end">
@@ -90,7 +125,18 @@ function AddTaskForm({
         </Button>
       </div>
 
-      <Input name="description" placeholder="Add description" className="w-full" />
+      {/* ------------- extras ------------- */}
+      <Input
+        name="description"
+        placeholder="Description (optional)"
+        className="w-full"
+      />
+      <Input
+        name="ai"
+        placeholder="AI instructions (optional)"
+        className="w-full"
+      />
     </form>
   );
 }
+
