@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     await Promise.all(
       invites.map(({ email, token }) =>
         resend.emails.send({
-          from: 'Team Invites <no-reply@yourapp.com>',
+          from: 'Team Invites <no-reply@productivityai.pro>',
           to: email,
           subject: 'You have been invited to a team',
           html: `
