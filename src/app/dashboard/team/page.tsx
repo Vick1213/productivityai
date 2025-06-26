@@ -125,7 +125,7 @@ function MembersPane({ members }: { members: Member[] }) {
         </Card>
       ))}
       {/* New member card */}
-      <Link href="/team/members/invite">
+      <Link href="/dashboard/team/members/invite">
         <Card className="group flex cursor-pointer items-center justify-center border-dashed p-4 text-muted-foreground transition hover:bg-muted">
           + Invite member
         </Card>
