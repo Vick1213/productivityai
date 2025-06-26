@@ -37,7 +37,7 @@ export async function createTeam(form: FormData) {
     await Promise.all(
       emails.map(async (to) => {
         const token = uuid();
-        const link  = `${base}/invite?org=${org.id}&token=${token}`;
+        const link  = `${base}/api/invite?org=${org.id}&token=${token}`;
 
         // Optional: persist token ↔ email for verification later
         // await prisma.invite.create({ data: { id: token, email: to, organizationId: org.id } });
