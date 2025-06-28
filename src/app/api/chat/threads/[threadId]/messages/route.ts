@@ -1,15 +1,14 @@
 // app/api/chat/threads/[threadId]/messages/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 
-/* ───────────── GET – paginated history ───────────── */
+/* ────────── GET  /api/chat/threads/:threadId/messages ────────── */
 export async function GET(
-  req: NextRequest,
+  req: Request,
   { params }: { params: { threadId: string } }
 ) {
-  /* ✨ await params first */
-  const { threadId } = await params;
+  const { threadId } = await params;               // ✅ await first
 
   const { searchParams } = new URL(req.url);
   const limit  = Number(searchParams.get("limit") ?? "30");
@@ -22,7 +21,12 @@ export async function GET(
     orderBy: { createdAt: "desc" },
     include: {
       author: {
-        select: { id: true, firstName: true, lastName: true, avatarUrl: true },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          avatarUrl: true, // ← remove if you didn’t migrate this column
+        },
       },
     },
   });
@@ -31,12 +35,12 @@ export async function GET(
   return NextResponse.json({ messages, nextCursor });
 }
 
-/* ───────────── POST – add new message ───────────── */
+/* ────────── POST  /api/chat/threads/:threadId/messages ────────── */
 export async function POST(
-  req: NextRequest,
+  req: Request,
   { params }: { params: { threadId: string } }
 ) {
-  const { threadId } = await params;          // 👈 same fix here
+  const { threadId } = await params;
 
   const { userId } = await auth();
   if (!userId)
@@ -46,7 +50,8 @@ export async function POST(
     where: { id: userId },
     select: { id: true },
   });
-  if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+  if (!user)
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   const { body, type = "TEXT" } = await req.json();
 
