@@ -1,91 +1,105 @@
-import { headers } from 'next/headers';
-import { Webhook } from 'svix';
-import prisma from '@/lib/prisma';
-import { NextResponse } from 'next/server';
+/* app/api/clerk/webhook/route.ts */
+import { headers } from "next/headers";
+import { Webhook } from "svix";
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 
+/* ------------------------------------------------------------------ *
+ * 0️⃣  Shared secret & raw payload
+ * ------------------------------------------------------------------ */
 export async function POST(req: Request) {
-  /* ————————————————————————————
-   * 0️⃣  Secret & raw payload
-   * ———————————————————————————— */
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
   if (!WEBHOOK_SECRET)
-    return new NextResponse('Missing Clerk webhook secret', { status: 500 });
+    return new NextResponse("Missing Clerk webhook secret", { status: 500 });
 
-  const hdrs           = headers();
-  const svixId         = (await hdrs).get('svix-id')        ?? '';
-  const svixTimestamp  = (await hdrs).get('svix-timestamp') ?? '';
-  const svixSignature  = (await hdrs).get('svix-signature') ?? '';
-  const payload        = await req.text();
+  const hdrs          = headers();
+  const svixId        = (await hdrs).get("svix-id")        ?? "";
+  const svixTimestamp = (await hdrs).get("svix-timestamp") ?? "";
+  const svixSignature = (await hdrs).get("svix-signature") ?? "";
+  const payload       = await req.text();
 
-  /* ————————————————————————————
+  /* ---------------------------------------------------------------- *
    * 1️⃣  Verify signature
-   * ———————————————————————————— */
+   * ---------------------------------------------------------------- */
   let evt: any;
   try {
     const wh = new Webhook(WEBHOOK_SECRET);
     evt = wh.verify(payload, {
-      'svix-id':        svixId,
-      'svix-timestamp': svixTimestamp,
-      'svix-signature': svixSignature,
+      "svix-id":        svixId,
+      "svix-timestamp": svixTimestamp,
+      "svix-signature": svixSignature,
     });
   } catch (err) {
-    console.error('❌  Clerk webhook signature mismatch', err);
-    return new NextResponse('Bad signature', { status: 400 });
+    console.error("❌  Clerk webhook signature mismatch", err);
+    return new NextResponse("Bad signature", { status: 400 });
   }
 
-  if (evt.type !== 'user.created')
-    return new NextResponse('Event ignored', { status: 200 });
+  /* only handle user.created */
+  if (evt.type !== "user.created") return NextResponse.json({ ok: true });
 
-  /* ————————————————————————————
-   * 2️⃣  Extract user data
-   * ———————————————————————————— */
+  /* ---------------------------------------------------------------- *
+   * 2️⃣  Extract user info
+   * ---------------------------------------------------------------- */
   const {
     id: clerkId,
     email_addresses,
     first_name,
     last_name,
+    profile_image_url,          // ✔ avatar URL from Clerk docs
   } = evt.data;
 
-  const email = email_addresses?.[0]?.email_address?.toLowerCase() ?? '';
-  if (!email) return new NextResponse('No e-mail on user', { status: 200 });
+  const email      = email_addresses?.[0]?.email_address?.toLowerCase() ?? "";
+  const avatarUrl  = profile_image_url ?? null;
 
-  /* ————————————————————————————
-   * 3️⃣  Upsert user + attach to orgs
-   * ———————————————————————————— */
+  if (!email) return NextResponse.json({ ok: true });
+
+  /* ---------------------------------------------------------------- *
+   * 3️⃣  Upsert user + connect to invited org(s)
+   * ---------------------------------------------------------------- */
   try {
-    await prisma.$transaction(async tx => {
-      // 3a. user row (create or update)
+    await prisma.$transaction(async (tx) => {
+      /* 3a. User row */
       await tx.user.upsert({
         where:  { id: clerkId },
-        update: { email, firstName: first_name, lastName: last_name },
-        create: { id: clerkId, email, firstName: first_name, lastName: last_name },
+        update: {
+          email,
+          firstName: first_name,
+          lastName:  last_name,
+          avatarUrl,                 // ← store avatar
+        },
+        create: {
+          id:        clerkId,
+          email,
+          firstName: first_name,
+          lastName:  last_name,
+          avatarUrl,                 // ← store avatar
+        },
       });
 
-      // 3b. any orgs that invited this e-mail
+      /* 3b. Pending invites for this e-mail */
       const invites = await tx.invite.findMany({
-        where: { email },
+        where:  { email },
         select: { id: true, organizationId: true },
       });
 
       if (invites.length) {
-        // connect the user to each organisation
+        /* connect user to each organisation */
         await Promise.all(
-          invites.map((inv: { id: string, organizationId: string }) =>
+          invites.map((inv) =>
             tx.organization.update({
               where: { id: inv.organizationId },
               data:  { users: { connect: { id: clerkId } } },
-            }),
-          ),
+            })
+          )
         );
-
-        // optional: delete consumed invites
+        /* consume invites */
         await tx.invite.deleteMany({ where: { email } });
       }
     });
   } catch (err) {
-    console.error('❌  Prisma error in Clerk webhook:', err);
-    return new NextResponse('Database error', { status: 500 });
+    console.error("❌  Prisma error in Clerk webhook:", err);
+    return new NextResponse("Database error", { status: 500 });
   }
 
-  return new NextResponse('OK', { status: 200 });
+  return NextResponse.json({ ok: true });
 }
