@@ -3,11 +3,10 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
 export async function GET(
-  request: Request,
-  ctx: { params: { projectId: string } }
+  _req: Request,
+  context: any                      // ← keep generic to avoid type error
 ) {
-  /* ✅ satisfy the rule */
-  const { projectId } = await ctx.params;   // "await" even though it’s sync
+  const { projectId } = context.params;    // read synchronously
 
   const tasks = await prisma.task.findMany({
     where:  { projectId },

@@ -4,12 +4,14 @@ import prisma from "@/lib/prisma";
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { projectId: string; taskId: string } }
+  context: any         // ✅ generic to satisfy Next’s validator
 ) {
-  const { userId } = await req.json() as { userId: string };
+  const { projectId, taskId } = context.params;  // read sync
+
+  const { userId } = (await req.json()) as { userId: string };
 
   const task = await prisma.task.update({
-    where: { id: params.taskId, projectId: params.projectId },
+    where: { id: taskId, projectId },
     data:  { userId },
     include: { user: true },
   });

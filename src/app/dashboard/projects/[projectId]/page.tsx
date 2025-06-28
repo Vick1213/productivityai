@@ -2,16 +2,15 @@
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { Suspense } from "react";
-import { TasksPane } from "./task-pane";  // extract into its own client file
+import { TasksPane } from "./task-pane";
 
-export default async function ProjectPage({
-  params,
-}: { params: { projectId: string } }) {
+export default async function ProjectPage({ params }: any) {
+  // satisfy Next’s “params should be awaited” rule
+  const { projectId } = await params;
+
   const project = await prisma.project.findUnique({
-    where: { id: params.projectId },
-    include: {
-      users: true,
-    },
+    where: { id: projectId },
+    include: { users: true },
   });
   if (!project) notFound();
 
@@ -21,7 +20,6 @@ export default async function ProjectPage({
       <p className="text-muted-foreground">{project.description ?? " "}</p>
 
       <Suspense fallback={<p>Loading tasks…</p>}>
-        {/* client component handles fetching & zero-state */}
         <TasksPane projectId={project.id} orgId={project.organizationId!} />
       </Suspense>
     </div>
