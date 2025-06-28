@@ -7,30 +7,33 @@ import {
   SignedOut,
   SignInButton,
   SignUpButton,
+  useAuth,            // 👈  new
 } from '@clerk/nextjs';
 
 export default function InviteJoin() {
-  const params = useSearchParams();
-  const token  = params.get('token');
-  const orgId  = params.get('org');
-  const router = useRouter();
+  const params  = useSearchParams();
+  const token   = params.get('token');
+  const orgId   = params.get('org');
+  const router  = useRouter();
+  const { isSignedIn } = useAuth();     // 👈  new
 
-  // call the protected API once the user is signed-in
+  /* ------------------------------------------
+   * Run only after sign-in is complete
+   * ---------------------------------------- */
   useEffect(() => {
+    if (!isSignedIn) return;            // 👈  bail out if not signed-in
     if (!token || !orgId) return;
 
-    const accept = async () => {
-      const ok = await fetch('/api/invite', {
+    (async () => {
+      const res = await fetch('/api/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, orgId }),
-      }).then(r => r.ok);
+      });
 
-      router.replace(ok ? '/dashboard' : '/404');
-    };
-
-    accept();
-  }, [token, orgId, router]);
+      router.replace(res.ok ? '/dashboard' : '/404');
+    })();
+  }, [isSignedIn, token, orgId, router]);
 
   const href =
     typeof window !== 'undefined' ? window.location.href : '/invite';
@@ -43,7 +46,7 @@ export default function InviteJoin() {
         <p>Please sign in (or create an account) to accept your invitation.</p>
         <div className="flex gap-2">
           <SignInButton forceRedirectUrl={href}>Sign in</SignInButton>
-          <SignUpButton forceRedirectUrl={href}>Sign up</SignUpButton>
+          <SignUpButton  forceRedirectUrl={href}>Sign up</SignUpButton>
         </div>
       </SignedOut>
 
