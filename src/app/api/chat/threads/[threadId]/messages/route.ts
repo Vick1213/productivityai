@@ -1,14 +1,14 @@
-// app/api/chat/threads/[threadId]/messages/route.ts
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 
-/* ────────── GET  /api/chat/threads/:threadId/messages ────────── */
+/* ───── GET /api/chat/threads/:threadId/messages ───── */
 export async function GET(
   req: Request,
   { params }: { params: { threadId: string } }
 ) {
-  const { threadId } = await params;               // ✅ await first
+  /* capture BEFORE any await */
+  const threadId = params.threadId;
 
   const { searchParams } = new URL(req.url);
   const limit  = Number(searchParams.get("limit") ?? "30");
@@ -25,7 +25,7 @@ export async function GET(
           id: true,
           firstName: true,
           lastName: true,
-          avatarUrl: true, // ← remove if you didn’t migrate this column
+          avatarUrl: true,   //  ← remove if you didn’t add this column
         },
       },
     },
@@ -35,12 +35,12 @@ export async function GET(
   return NextResponse.json({ messages, nextCursor });
 }
 
-/* ────────── POST  /api/chat/threads/:threadId/messages ────────── */
+/* ───── POST /api/chat/threads/:threadId/messages ───── */
 export async function POST(
   req: Request,
   { params }: { params: { threadId: string } }
 ) {
-  const { threadId } = await params;
+  const threadId = params.threadId;    // ① read sync, *then* do awaits
 
   const { userId } = await auth();
   if (!userId)
