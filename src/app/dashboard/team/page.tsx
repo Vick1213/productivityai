@@ -9,6 +9,9 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs";
+
+import { AddTaskDrawer } from "@/components/task/AddTaskDrawer";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -24,8 +27,12 @@ import { Badge } from "@/components/ui/badge";
 import { MoreHorizontal } from "lucide-react";
 import { ChatDrawer } from "@/components/chat/chatDrawer";
 
-import { Member, Organization } from "@/types/team";
+import { Member, Organization, Project } from "@/types/team";
 import { useAuth } from "@clerk/nextjs";
+import { AssignUserSelect } from "@/components/task/AssignUserSelect";
+import { useProjectTasks } from "@/lib/hooks/useProjectTasks";
+import { Task } from "@prisma/client";
+import { NewProjectDialog } from "@/components/project/NewProjectDialog";
 
 /* ─────────────────────────────── page ─────────────────────────────── */
 export default function TeamPage() {
@@ -117,10 +124,28 @@ export default function TeamPage() {
             />
           </TabsContent>
 
-          {/* stubs for other tabs */}
-          <TabsContent value="projects" className="mt-6">
-            <ComingSoon icon="📁" title="Team Projects" />
-          </TabsContent>
+<TabsContent value="projects" className="mt-6">
+  <div className="mb-4">
+    <NewProjectDialog
+      members={organization.members}
+      onSuccess={async () => {
+  // Quick update: append the new project to local state
+  // (returned project comes out of createProject)
+  const fresh = await fetch("/api/team").then(r => r.json());
+  setOrganization(fresh);
+}}
+
+    />
+  </div>
+
+  <ProjectsPane
+    projects={organization.projects}
+    members={organization.members}
+  />
+</TabsContent>
+
+
+
           <TabsContent value="settings" className="mt-6">
             <ComingSoon icon="⚙️" title="Team Settings" />
           </TabsContent>
@@ -136,6 +161,66 @@ export default function TeamPage() {
         myUserId={myUserId || ""}
       />
     </>
+  );
+}
+
+
+function ProjectsPane({
+  projects,
+  members,
+}: {
+  projects: Project[];
+  members: Member[];
+}) {
+  return (
+    <div className="space-y-6">
+      {projects.map((p) => (
+        <ProjectCard key={p.id} project={p} members={members} />
+      ))}
+    </div>
+  );
+}
+
+
+function ProjectCard({ project, members }: { project: Project; members: Member[] }) {
+  const { tasks, isLoading, mutate } = useProjectTasks(project.id);
+
+  return (
+    <Link href={`/dashboard/projects/${project.id}`} prefetch={false} className="block">
+      <Card className="p-4 space-y-4 hover:shadow cursor-pointer">
+        <CardTitle>{project.name}</CardTitle>
+
+        {isLoading ? (
+          <Skeleton className="h-4 w-1/3" />
+        ) : tasks.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No tasks yet</p>
+        ) : (
+          <ul className="space-y-2">
+            {tasks.slice(0, 3).map((t:Task) => (  /* show first 3 */
+              <li key={t.id} className="flex items-center justify-between">
+                <span>{t.name}</span>
+                <AssignUserSelect
+                  taskId={t.id}
+                  projectId={project.id}
+                  members={members}
+                  currentId={t.userId}
+                  onChange={() => mutate()}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* optional: quick-add task without leaving the list page */}
+        <AddTaskDrawer
+  projectId={project.id}
+  members={members}
+
+  triggerProps={{ onClick: (e) => e.stopPropagation() }}  // 👈
+//                           ^ prevent the Link underneath
+/>
+      </Card>
+    </Link>
   );
 }
 
