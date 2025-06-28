@@ -1,4 +1,4 @@
-
+// app/api/orgs/[orgId]/members/route.ts
 "use server";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
@@ -7,17 +7,16 @@ import { auth } from "@clerk/nextjs/server";
 /* GET /api/orgs/:orgId/members */
 export async function GET(
   _req: Request,
-  ctx: { params: { orgId: string } }
+  { params }: any           // 👈 let Next supply the correct shape
 ) {
-  // lint-satisfying copy
-  const { orgId } = await ctx.params;
+  const orgId = params.orgId;        // safe after the first line
 
-  /* — 1) auth check — */
+  /* 1) caller must be signed-in */
   const { userId } = await auth();
   if (!userId)
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
 
-  /* — 2) ensure caller belongs to this org — */
+  /* 2) caller must belong to this org */
   const caller = await prisma.user.findUnique({
     where: { id: userId },
     select: { organizationId: true },
@@ -25,7 +24,7 @@ export async function GET(
   if (caller?.organizationId !== orgId)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  /* — 3) fetch members — */
+  /* 3) members list */
   const members = await prisma.user.findMany({
     where: { organizationId: orgId },
     orderBy: { firstName: "asc" },
@@ -38,5 +37,5 @@ export async function GET(
     },
   });
 
-  return NextResponse.json(members, { status: 200 });
+  return NextResponse.json(members);
 }
