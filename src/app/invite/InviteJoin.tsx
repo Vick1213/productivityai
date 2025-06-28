@@ -20,7 +20,7 @@ export default function InviteJoin() {
     if (!token || !orgId) return;
 
     const accept = async () => {
-      const ok = await fetch('/api/invite/accept', {
+      const ok = await fetch('/api/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, orgId }),
