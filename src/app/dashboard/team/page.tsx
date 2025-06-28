@@ -182,47 +182,79 @@ function ProjectsPane({
 }
 
 
-function ProjectCard({ project, members }: { project: Project; members: Member[] }) {
+function ProjectCard({
+  project,
+  members,
+}: {
+  project: Project;
+  members: Member[];
+}) {
   const { tasks, isLoading, mutate } = useProjectTasks(project.id);
 
   return (
-    <Link href={`/dashboard/projects/${project.id}`} prefetch={false} className="block">
-      <Card className="p-4 space-y-4 hover:shadow cursor-pointer">
-        <CardTitle>{project.name}</CardTitle>
+    <div className="relative">
+      {/* ── clickable card ───────────────────────────────── */}
+      <Link
+        href={`/dashboard/projects/${project.id}`}
+        prefetch={false}
+        className="block"
+      >
+        <Card className="p-4 space-y-4 hover:shadow cursor-pointer">
+         <CardTitle className="flex items-center gap-2">
+  {project.name}
+  {project.completed && (
+    <span className="text-xs px-2 py-0.5 rounded bg-green-200 text-green-900">
+      ✓ Done
+    </span>
+  )}
+</CardTitle>
+{project.dueAt && (
+  <p className="text-xs text-muted-foreground">
+    Due&nbsp;{new Date(project.dueAt).toLocaleDateString()}
+  </p>
+)}
 
-        {isLoading ? (
-          <Skeleton className="h-4 w-1/3" />
-        ) : tasks.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No tasks yet</p>
-        ) : (
-          <ul className="space-y-2">
-            {tasks.slice(0, 3).map((t:Task) => (  /* show first 3 */
-              <li key={t.id} className="flex items-center justify-between">
-                <span>{t.name}</span>
-                <AssignUserSelect
-                  taskId={t.id}
-                  projectId={project.id}
-                  members={members}
-                  currentId={t.userId}
-                  onChange={() => mutate()}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
 
-        {/* optional: quick-add task without leaving the list page */}
+          {isLoading ? (
+            <Skeleton className="h-4 w-1/3" />
+          ) : tasks.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No tasks yet</p>
+          ) : (
+            <ul className="space-y-2">
+              {tasks.slice(0, 3).map((t:Task) => (
+                <li
+                  key={t.id}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span>{t.name}</span>
+                  <AssignUserSelect
+                    taskId={t.id}
+                    projectId={project.id}
+                    members={members}
+                    currentId={t.userId}
+                    onChange={() => mutate()}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </Link>
+
+      
+
+      {/* ── quick-add button (NOT inside the link) ───────── */}
+      <div className="absolute right-4 top-4">
         <AddTaskDrawer
-  projectId={project.id}
-  members={members}
-
-  triggerProps={{ onClick: (e) => e.stopPropagation() }}  // 👈
-//                           ^ prevent the Link underneath
-/>
-      </Card>
-    </Link>
+          projectId={project.id}
+          members={members}
+          onCreated={() => mutate()}
+        />
+      </div>
+    </div>
   );
 }
+
 
 /* ───────────────────── helper: Members grid ───────────────────── */
 function MembersPane({

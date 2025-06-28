@@ -66,6 +66,15 @@ export function NewProjectDialog({
             </div>
           </div>
 
+          <div className="flex items-center gap-3">
+    <input type="date" name="dueDate" className="border rounded px-3 py-2" />
+    <input type="time" name="dueTime" className="border rounded px-3 py-2" />
+    <label className="flex items-center gap-2 text-sm">
+      <input type="checkbox" name="completed" />
+      Completed
+    </label>
+  </div>
+
           <Button type="submit" disabled={isPending}>
             {isPending ? "Creating…" : "Create project"}
           </Button>

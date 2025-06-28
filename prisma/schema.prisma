@@ -98,6 +98,8 @@ model Project {
   organization    Organization? @relation(fields: [organizationId], references: [id])
   organizationId  String?
 
+  dueAt          DateTime?
+  completed     Boolean @default(false)
   users           User[]   @relation("UserProjects")
   tasks           Task[]
 

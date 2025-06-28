@@ -145,14 +145,13 @@ function MonthView({ tasks }: { tasks: Task[] }) {
                 {/* Tasks */}
                 <div className="flex flex-col gap-0.5 grow overflow-hidden">
                   {visibleTasks.map((t) => (
-                    <div
-                      key={t.id}
-                      className="truncate rounded-sm px-1.5 py-0.5 text-[0.55rem] lg:text-xs leading-tight bg-primary/10 text-primary cursor-pointer"
-                    >
-                      {t.time ? `${t.time} • ` : ''}
-                      {t.name}
-                    </div>
-                  ))}
+                  <div
+                    key={t.id}
+                    className="truncate rounded-sm px-1.5 py-0.5 text-[0.55rem] lg:text-xs leading-tight bg-primary/10 text-primary cursor-pointer"
+                  >
+                    {t.name}
+                        </div>
+                            ))}
                   {overflow > 0 && (
                     <span className="text-[0.55rem] lg:text-xs text-muted-foreground">
                       +{overflow} more

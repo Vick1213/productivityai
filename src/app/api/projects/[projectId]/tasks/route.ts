@@ -4,9 +4,10 @@ import prisma from "@/lib/prisma";
 
 export async function GET(
   _req: Request,
-  context: any                      // ← keep generic to avoid type error
+  ctx: any                      // keep generic = no build error
 ) {
-  const { projectId } = context.params;    // read synchronously
+  /* await the params object exactly once */
+  const { projectId } = await ctx.params;   // ✅ satisfies runtime rule
 
   const tasks = await prisma.task.findMany({
     where:  { projectId },

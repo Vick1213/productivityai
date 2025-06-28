@@ -1,69 +1,62 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { auth } from '@clerk/nextjs/server';
+import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
 import { Priority } from '@prisma/client';
 
-//--------------------------------------------------------------------------
-// Helpers
-//--------------------------------------------------------------------------
-
-/**
- * Combines separate yyyy-MM-dd and HH:mm strings into a Date object.
- * Falls back to today @ 00:00 when either part is missing.
- */
-function toDateTime(date?: string | null, time?: string | null): Date {
-  const d = date?.trim() || new Date().toISOString().split('T')[0]; // today
+function toDate(date?: string | null, time?: string | null): Date {
+  const d = date?.trim() || new Date().toISOString().split('T')[0];
   const t = time?.trim() || '00:00';
-  // Construct an ISO 8601 string in local time, let JS cast to Date.
   return new Date(`${d}T${t}:00`);
 }
 
-function parsePriority(value: FormDataEntryValue | null): Priority {
-  if (!value) return Priority.LOW;
-  const key = value.toString().toUpperCase();
-  return key in Priority ? (Priority as any)[key] : Priority.LOW;
-}
-
-//--------------------------------------------------------------------------
-//  Server actions
-//--------------------------------------------------------------------------
-
 export async function addTask(form: FormData) {
-  const { userId } = await auth();
-  if (!userId) throw new Error('Unauthenticated');
+  const { userId: currentUser } = await auth();
+  if (!currentUser) throw new Error('Unauthenticated');
 
-  const name = form.get('title')?.toString().trim();
-  if (!name) return; // silently ignore empty submissions
+  const name = (form.get('name') as string)?.trim();
+  if (!name) return;
 
-  const dateStr   = form.get('date')?.toString(); // yyyy-MM-dd
-  const timeStr   = form.get('time')?.toString(); // HH:mm
-  const startsAt  = toDateTime(dateStr, timeStr);
-  const dueAtStr     = form.get('dueAt')?.toString();
-  const dueAttimeStr = form.get('dueTime')?.toString();
+  /* ----- optional fields from the drawer ----- */
+  const projectId  = form.get('projectId')?.toString() || null;
+  const assigneeId = form.get('userId')?.toString() || currentUser;
 
-  const dueAt =toDateTime(dueAtStr, dueAttimeStr); // optional, so null if empty
+  const description = (form.get('description') as string) ?? '';
+  const priority    =
+    (form.get('priority')?.toString().toUpperCase() as Priority) ??
+    Priority.LOW;
 
-  const description     = form.get('description')?.toString() ?? '';
-  const aiInstructions  = form.get('ai')?.toString() ?? '';
-  const priority        = parsePriority(form.get('priority'));
+  // fallback to "now" if drawer didn’t send date/time
+  const startsAt = toDate(
+    form.get('date')?.toString(),
+    form.get('time')?.toString()
+  );
+
+  // if no due date chosen, use the same timestamp
+  const dueAt = toDate(
+    form.get('dueDate')?.toString(),
+    form.get('dueTime')?.toString()
+  ) || startsAt;
 
   await prisma.task.create({
     data: {
       name,
-      userId,
       description,
-      aiInstructions,
       priority,
       startsAt,
-      dueAt,
-      // completed / createdAt / updatedAt via schema defaults
+      dueAt,          // ✅ always defined
+      projectId,
+      userId: assigneeId,
     },
   });
 
-  revalidatePath('/dashboard');
+  if (projectId) revalidatePath(`/dashboard/projects/${projectId}`);
+  else revalidatePath('/dashboard');
 }
+
+
+/* toggleTask & deleteTask stay unchanged */
 
 export async function toggleTask(id: string, completed: boolean) {
   const { userId } = await auth();

@@ -1,40 +1,61 @@
 // lib/actions/projects.ts
 'use server';
 
+import { auth } from '@clerk/nextjs/server';
 import prisma from '@/lib/prisma';
-import { auth } from '@clerk/nextjs/server';   // ✅ cross-env import (not /server)
+import { revalidatePath } from 'next/cache';
 
-// …rest of createProject exactly as before …
+/** helper – yyyy-MM-dd + HH:mm ➜ Date | null */
+function toDate(date?: string | null, time?: string | null): Date | null {
+  if (!date && !time) return null;
+  const d = date?.trim() || new Date().toISOString().split('T')[0];
+  const t = time?.trim() || '00:00';
+  return new Date(`${d}T${t}:00`);
+}
 
 export async function createProject(form: FormData) {
   const { userId } = await auth();
-  if (!userId) return { error: "Unauthenticated" };
+  if (!userId) return { error: 'Unauthenticated' };
 
-  // 🔍  FIND the org exactly like /api/team does
+  /* required */
+  const name = form.get('name')?.toString().trim();
+  if (!name) return { error: 'Name required' };
+
+  /* optional */
+  const description = form.get('description')?.toString().trim() ?? '';
+  const memberIds   = form.getAll('memberIds').map(String);
+  const completed   = form.get('completed') === 'on';
+
+  /* NEW fields */
+  const dueAt = toDate(
+    form.get('dueDate')?.toString(),
+    form.get('dueTime')?.toString()
+  );
+
+  /* caller’s org */
   const org = await prisma.organization.findFirst({
     where: { users: { some: { id: userId } } },
     select: { id: true },
   });
-  if (!org) return { error: "Caller not in any organisation" };
+  if (!org) return { error: 'Caller has no organisation' };
 
-  /* form fields */
-  const name        = form.get("name") as string;
-  const description = form.get("description") as string | null;
-  const memberIds   = form.getAll("memberIds") as string[];
-
-  // 📝 create + connect org AND users
+  /* create */
   const project = await prisma.project.create({
     data: {
       name,
       description,
-      organization: { connect: { id: org.id } },   // ✅  now set
+      completed,
+      dueAt,
+      organization: { connect: { id: org.id } },
       users: {
-        connect: memberIds.length
-          ? memberIds.map((id) => ({ id }))
-          : [{ id: userId }],                      // ensure at least creator
+        connect:
+          memberIds.length > 0
+            ? memberIds.map((id) => ({ id }))
+            : [{ id: userId }],
       },
     },
   });
 
-  return project;      // TeamPage will re-fetch afterwards
+  revalidatePath('/dashboard/projects');         // or /dashboard/team
+  return project;
 }
