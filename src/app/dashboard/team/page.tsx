@@ -1,130 +1,211 @@
+// app/(dashboard)/team/page.tsx
 'use client';
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import useSWR from "swr";
-
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Card, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Organization, Member, Project, Note } from "@/types/team";
+import { MoreHorizontal } from "lucide-react";
+import { ChatDrawer } from "@/components/chat/chatDrawer";
 
-/**
- * Tiny fetcher helper so we can use SWR.
- */
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+import { Member, Organization } from "@/types/team";
+import { useAuth } from "@clerk/nextjs";
 
-/**
- * Main Team page – lives at /team (app router)
- *
- * – If the signed‑in user does **not** belong to an organisation, we ask them to create one.
- * – Otherwise we render three tabs: Members ▸ Projects ▸ Notes.
- *
- * Data shape mirrors our Prisma schema but trimmed for the UI layer.
- */
+/* ─────────────────────────────── page ─────────────────────────────── */
 export default function TeamPage() {
-  const {
-    data: organization,
-    isLoading,
-    error,
-  } = useSWR<Organization | null>("/api/team", fetcher);
+  
+  // —— local state —————————————————————————————
+  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [error,   setError]         = useState<string | null>(null);
 
-  if (isLoading) return <TeamSkeleton />;
-  if (error) return <ErrorState message="Could not load team" />;
+  // chat-drawer state: {threadId, name}
+  const [chatTarget, setChatTarget] = useState<{
+    threadId: string;
+    name: string;
+  } | null>(null);
 
-  if (!organization) {
+
+  
+  const myUserId = useAuth().userId; 
+  // replace with your auth logic
+
+  /* —— fetch org once ———————————————————————————— */
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/team");
+        if (!res.ok) throw new Error("Failed to fetch organization");
+        const data = await res.json();
+        setOrganization(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  /* —— skeleton / error / empty —————————————————— */
+  if (loading) return <Centered text="Loading team data…" />;
+  if (error)   return <Centered text={`Error: ${error}`} isError />;
+  if (!organization)
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-16">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          You’re not part of a team yet
-        </h1>
-        <Link href="/dashboard/team/create">
-          <Button>Create a team</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  return (
-    <div className="container mx-auto max-w-6xl space-y-8 py-8">
-      {/* ─────────────────────── Header */}
-      <header className="space-y-2">
-        <h1 className="text-4xl font-bold leading-tight">
-          {organization.name}
-        </h1>
-        <p className="text-muted-foreground">
-          {organization.members.length} members · {organization.projects.length} projects
+      <Centered>
+        <h3 className="text-lg font-semibold mb-2">No Team Found</h3>
+        <p className="text-muted-foreground mb-4">
+          You're not part of any team yet.
         </p>
-      </header>
+        <Link href="/dashboard/team/create">
+          <Button>Create a Team</Button>
+        </Link>
+      </Centered>
+    );
 
-      {/* ─────────────────────── Tabs */}
-      <Tabs defaultValue="members" className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="projects">Projects</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
-        </TabsList>
+  /* —— render page ——————————————————————————————— */
+  return (
+    <>
+      <div className="space-y-6 p-6">
+        {/* header */}
+        <header>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {organization.name}
+          </h1>
+          <p className="text-muted-foreground">
+            {organization.members.length} members ·{" "}
+            {organization.projects.length} projects
+          </p>
+        </header>
 
-        {/* —— Members —— */}
-        <TabsContent value="members">
-          <MembersPane members={organization.members} />
-        </TabsContent>
+        {/* tabs */}
+        <Tabs defaultValue="members">
+          <TabsList>
+            <TabsTrigger value="members">Members</TabsTrigger>
+            <TabsTrigger value="projects">Projects</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+          </TabsList>
 
-        {/* —— Projects —— */}
-        <TabsContent value="projects">
-          <ProjectsPane projects={organization.projects} />
-        </TabsContent>
+          <TabsContent value="members" className="mt-6">
+            <MembersPane
+              members={organization.members}
+              onOpenChat={async (m) => {
+                // 1️⃣ ensure a DM thread exists (call your API)
+                const { threadId } = await ensureDmThread(m.id);
+                // 2️⃣ open drawer
+                setChatTarget({
+                  threadId,
+                  name: `${m.firstName} ${m.lastName}`,
+                });
+              }}
+              onPing={(m) => console.log("Ping!", m)}
+            />
+          </TabsContent>
 
-        {/* —— Notes —— */}
-        <TabsContent value="notes">
-          <NotesPane notes={organization.notes} />
-        </TabsContent>
-      </Tabs>
-    </div>
+          {/* stubs for other tabs */}
+          <TabsContent value="projects" className="mt-6">
+            <ComingSoon icon="📁" title="Team Projects" />
+          </TabsContent>
+          <TabsContent value="settings" className="mt-6">
+            <ComingSoon icon="⚙️" title="Team Settings" />
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* ——————— chat drawer ——————— */}
+      <ChatDrawer
+        open={!!chatTarget}
+        onOpenChange={() => setChatTarget(null)}
+        threadId={chatTarget?.threadId}
+        title={chatTarget?.name}
+        myUserId={myUserId || ""}
+      />
+    </>
   );
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Component: Members pane
-// ──────────────────────────────────────────────────────────────
-function MembersPane({ members }: { members: Member[] }) {
+/* ───────────────────── helper: Members grid ───────────────────── */
+function MembersPane({
+  members,
+  onOpenChat,
+  onPing,
+}: {
+  members: Member[];
+  onOpenChat: (m: Member) => void;
+  onPing:     (m: Member) => void;
+}) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
       {members.map((m) => (
-        <Card key={m.id} className="flex items-center gap-4 p-4">
-          <Avatar className="h-12 w-12">
-            <AvatarImage src={m.avatarUrl ?? undefined} alt={m.firstName} />
-            <AvatarFallback>
-              {m.firstName.charAt(0)}
-              {m.lastName.charAt(0)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 space-y-1 overflow-hidden">
-            <CardTitle className="truncate text-base">
-              {m.firstName} {m.lastName}
-            </CardTitle>
-            {m.jobTitle && (
-              <p className="truncate text-sm text-muted-foreground">
-                {m.jobTitle}
-              </p>
+        <Card key={m.id} className="group relative p-4 hover:shadow-md">
+          {/* avatar + name */}
+          <div className="flex items-center gap-4">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={m.avatarUrl ?? undefined} alt={m.firstName} />
+              <AvatarFallback>
+                {m.firstName[0]}
+                {m.lastName[0]}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 space-y-1 overflow-hidden">
+              <CardTitle className="truncate text-base">
+                {m.firstName} {m.lastName}
+              </CardTitle>
+              {m.jobTitle && (
+                <p className="truncate text-sm text-muted-foreground">
+                  {m.jobTitle}
+                </p>
+              )}
+            </div>
+            {m.role && (
+              <Badge className="shrink-0" variant="secondary">
+                {m.role}
+              </Badge>
             )}
           </div>
-          {m.role && (
-            <Badge className="shrink-0" variant="secondary">
-              {m.role}
-            </Badge>
-          )}
+
+          {/* ⋯ dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-2 top-2 opacity-0 transition group-hover:opacity-100"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent side="right" align="start">
+              <DropdownMenuLabel>Quick actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => onOpenChat(m)}>
+                💬 Message
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onPing(m)}>
+                📣 Ping
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </Card>
       ))}
-      {/* New member card */}
+
+      {/* Invite card */}
       <Link href="/dashboard/team/members/invite">
         <Card className="group flex cursor-pointer items-center justify-center border-dashed p-4 text-muted-foreground transition hover:bg-muted">
           + Invite member
@@ -134,116 +215,45 @@ function MembersPane({ members }: { members: Member[] }) {
   );
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Component: Projects pane
-// ──────────────────────────────────────────────────────────────
-function ProjectsPane({ projects }: { projects: Project[] }) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {projects.map((p) => (
-        <Link key={p.id} href={`/projects/${p.id}`}>
-          <Card className="group cursor-pointer transition hover:shadow-lg">
-            <CardHeader>
-              <CardTitle className="truncate text-lg group-hover:underline">
-                {p.name}
-              </CardTitle>
-            </CardHeader>
-            {p.description && (
-              <CardContent>
-                <p className="line-clamp-3 text-sm text-muted-foreground">
-                  {p.description}
-                </p>
-              </CardContent>
-            )}
-          </Card>
-        </Link>
-      ))}
-
-      {/* New project card */}
-      <Link href="/projects/create">
-        <Card className="group flex cursor-pointer items-center justify-center border-dashed p-4 text-muted-foreground transition hover:bg-muted">
-          + New project
-        </Card>
-      </Link>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────
-//  Component: Notes pane
-// ──────────────────────────────────────────────────────────────
-function NotesPane({ notes = [] }: { notes?: Note[] }) {
-  if (notes.length === 0) {
+/* ───────────────────── tiny helpers ───────────────────── */
+function Centered({
+  children,
+  text,
+  isError,
+}: {
+  children?: React.ReactNode;
+  text?: string;
+  isError?: boolean;
+}) {
+  if (text)
     return (
-      <div className="flex flex-col items-center gap-4 py-8">
-        <p className="text-muted-foreground">No notes yet</p>
-        <Link href="/notes/create">
-          <Button>New note</Button>
-        </Link>
+      <div className="flex items-center justify-center p-8">
+        <p className={isError ? "text-red-500" : "text-muted-foreground"}>
+          {text}
+        </p>
       </div>
     );
-  }
+  return <div className="flex flex-col items-center justify-center p-8">{children}</div>;
+}
 
+function ComingSoon({ icon, title }: { icon: string; title: string }) {
   return (
-    <div className="space-y-4">
-      {notes.map((note) => (
-        <Link key={note.id} href={`/notes/${note.id}`}>
-          <Card className="group cursor-pointer transition hover:ring-1 hover:ring-primary/40">
-            <CardHeader>
-              <CardTitle className="group-hover:underline">
-                {note.title}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="line-clamp-3 whitespace-pre-line text-sm text-muted-foreground">
-                {note.body}
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-      ))}
-      <Link href="/notes/create">
-        <Button>New note</Button>
-      </Link>
+    <div className="text-center py-12 text-muted-foreground">
+      <div className="text-4xl mb-4">{icon}</div>
+      <h3 className="text-lg font-semibold mb-2">{title}</h3>
+      <p className="text-sm">Feature coming soon!</p>
     </div>
   );
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Skeleton + Error UI helpers
-// ──────────────────────────────────────────────────────────────
-function TeamSkeleton() {
-  return (
-    <div className="container mx-auto max-w-6xl space-y-8 py-8">
-      <Skeleton className="h-10 w-1/3 rounded-lg" />
-      <Skeleton className="h-4 w-1/4 rounded" />
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-lg" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-4 py-16">
-      <p className="text-muted-foreground">{message}</p>
-      <Button
-        variant="outline"
-        onClick={() => window.location.reload()}
-        className="w-fit"
-      >
-        Retry
-      </Button>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────
-//  Utility: simple classnames helper (optional)
-// ──────────────────────────────────────────────────────────────
-function clsx(...classes: (string | false | undefined)[]): string {
-  return classes.filter(Boolean).join(" ");
+/* ───────────────────── mock helper — replace with real call ───────────────────── */
+async function ensureDmThread(memberId: string): Promise<{ threadId: string }> {
+  // 👉 Replace with your real API call
+  const res = await fetch("/api/chat/threads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body:   JSON.stringify({ memberIds: [memberId] }), // backend figures out uniqueness
+  });
+  const data = await res.json();
+  return { threadId: data.id }; // assuming API returns {id: "..."}
 }

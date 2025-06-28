@@ -14,6 +14,58 @@ enum Priority {
   HIGH
 }
 
+/// ─────────────────── chat enums ───────────────────
+enum MessageType {
+  TEXT   /// plain text
+  PING   /// 🔔 nudge
+  // FILE, REACTION … add more later
+}
+
+/// ─────────────────── chat models ───────────────────
+/// One thread (DM or small group) lives inside exactly one
+/// organisation and involves ≥ 2 users.
+model ChatThread {
+  id             String           @id @default(uuid())
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  organizationId String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // Denormalised pointer to the latest activity for sorting
+  lastMessageAt  DateTime?
+
+  participants   ChatParticipant[]
+  messages       ChatMessage[]
+
+  @@index([organizationId])
+  @@index([lastMessageAt])
+}
+
+/// Join table: which users are in which thread.
+model ChatParticipant {
+  thread   ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  threadId String
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+
+  @@id([threadId, userId])
+}
+
+/// Every message belongs to a thread + author.
+model ChatMessage {
+  id        String      @id @default(uuid())
+  thread    ChatThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  threadId  String
+  author    User        @relation(fields: [authorId], references: [id])
+  authorId  String
+
+  type      MessageType @default(TEXT)
+  body      String?     // null for non-text payloads
+  createdAt DateTime    @default(now())
+
+  @@index([threadId, createdAt])
+}
+
 model Invite {
   id             String   @id @default(uuid())
   email          String
@@ -30,7 +82,7 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   invites   Invite[]          // 👈  opposite side of the relation
-
+chatThreads ChatThread[]
   users     User[]
   projects  Project[]
 }
@@ -48,6 +100,8 @@ model Project {
   users           User[]   @relation("UserProjects")
   tasks           Task[]
 
+
+
   @@unique([organizationId, name])
 }
 
@@ -55,7 +109,13 @@ model User {
   id             String   @id @default(uuid())
   email          String   @unique
   firstName      String
+  avatarUrl      String?      // 👈  add this line
+
   lastName       String
+  chatMessages     ChatMessage[]
+
+  chatParticipants ChatParticipant[]
+
   openAIKey       String?
   openAIModel    String? @default("gpt-3.5-turbo")
   jobTitle       String?

@@ -3,6 +3,7 @@ import { Topbar } from '@/components/dashboard/topbar';
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { ReactNode } from 'react';
+import { ClerkProvider } from '@clerk/nextjs';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const { userId } = await auth();
@@ -14,6 +15,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       <main className="flex flex-col flex-1">
         <Topbar />
         {children}
+        
       </main>
     </div>
   );
