@@ -1,104 +1,132 @@
-// app/api/chat/threads/[threadId]/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 
-/**
- * GET  ▸ /api/chat/threads/:threadId
- * Returns the thread meta, participants, and the newest message.
- */
+/* ───── GET /api/chat/threads/:threadId ───── */
 export async function GET(
-  _req: NextRequest,
-  { params }: { params: { threadId: string } }
+  req: Request,
+  { params }: { params: Promise<{ threadId: string }> }
 ) {
-  const thread = await prisma.chatThread.findUnique({
-    where: { id: params.threadId },
-    include: {
-      participants: {
-        include: {
-          user: {
-            select: { id: true, firstName: true, lastName: true, avatarUrl: true },
+  const { threadId } = await params;
+
+  try {
+    const thread = await prisma.chatThread.findUnique({
+      where: { id: threadId },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          include: {
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatarUrl: true,
+              },
+            },
           },
         },
       },
-      messages: {
-        orderBy: { createdAt: "desc" },
-        take: 1,                       // newest only
-        include: { author: true },
-      },
-    },
-  });
+    });
 
-  if (!thread) {
-    return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    if (!thread) {
+      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(thread);
+  } catch (error) {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-
-  return NextResponse.json(thread);
 }
 
-/**
- * PATCH ▸ /api/chat/threads/:threadId
- * Let the caller rename the thread or add/remove participants.
- *
- * {
- *   "title": "Product Launch",
- *   "addUserIds":    ["abc", "xyz"],
- *   "removeUserIds": ["lmn"]
- * }
- */
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { threadId: string } }
+/* ───── PUT /api/chat/threads/:threadId ───── */
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ threadId: string }> }
 ) {
+  const { threadId } = await params;
+  
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
-  const { title, addUserIds = [], removeUserIds = [] } = await req.json();
-
-  const data: any = {};
-  if (title !== undefined) data.title = title;
-
-  // Prepare nested updates only if arrays are non-empty
-  if (addUserIds.length || removeUserIds.length) {
-    data.participants = {
-      ...(addUserIds.length && {
-        createMany: {
-          data: addUserIds.map((id: string) => ({ userId: id })),
-          skipDuplicates: true,
+  try {
+    // Since ChatThread doesn't have a name field, we can only update lastMessageAt
+    // or add other fields that actually exist in the schema
+    const thread = await prisma.chatThread.update({
+      where: { id: threadId },
+      data: { 
+        lastMessageAt: new Date() // Update the last activity time
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatarUrl: true,
+              },
+            },
+          },
         },
-      }),
-      ...(removeUserIds.length && {
-        deleteMany: removeUserIds.map((id: string) => ({ userId: id })),
-      }),
-    };
+      },
+    });
+
+    return NextResponse.json(thread);
+  } catch (error) {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-
-  const updated = await prisma.chatThread.update({
-    where: { id: params.threadId },
-    data,
-    include: {
-      participants: { include: { user: true } },
-    },
-  });
-
-  return NextResponse.json(updated);
 }
 
-/**
- * DELETE ▸ /api/chat/threads/:threadId
- * Soft-delete: only mark as deleted for now (safer for audit/history).
- */
+/* ───── DELETE /api/chat/threads/:threadId ───── */
 export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { threadId: string } }
+  req: Request,
+  { params }: { params: Promise<{ threadId: string }> }
 ) {
-  // Replace with hard delete if you prefer
-  await prisma.chatThread.update({
-    where: { id: params.threadId },
-    data: { deletedAt: new Date() },      // add this nullable column if desired
-  });
+  const { threadId } = await params;
+  
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  }
 
-  return NextResponse.json({ ok: true });
+  try {
+    // Check if user is a participant before allowing deletion
+    const thread = await prisma.chatThread.findFirst({
+      where: {
+        id: threadId,
+        participants: {
+          some: { userId }
+        }
+      }
+    });
+
+    if (!thread) {
+      return NextResponse.json({ error: "Thread not found or access denied" }, { status: 404 });
+    }
+
+    await prisma.chatThread.delete({
+      where: { id: threadId },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

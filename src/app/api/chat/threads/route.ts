@@ -38,14 +38,23 @@ export async function POST(req: NextRequest) {
 
   // ——— 1-to-1 DM?  try to reuse ——————————————————————
   if (participants.length === 2) {
-    const existing = await prisma.chatThread.findFirst({
+    // Find threads where both users are participants and no one else
+    const existingThreads = await prisma.chatThread.findMany({
       where: {
         participants: {
           every: { userId: { in: participants } },
         },
-        participantsCount: 2,           // ⬅ optional if you added this view / column
+      },
+      include: {
+        participants: true,
       },
     });
+
+    // Check if any thread has exactly these 2 participants
+    const existing = existingThreads.find(
+      (thread) => thread.participants.length === 2
+    );
+
     if (existing) return NextResponse.json(existing);
   }
 
@@ -58,6 +67,20 @@ export async function POST(req: NextRequest) {
       participants: {
         createMany: {
           data: participants.map((id) => ({ userId: id })),
+        },
+      },
+    },
+    include: {
+      participants: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              avatarUrl: true,
+            },
+          },
         },
       },
     },

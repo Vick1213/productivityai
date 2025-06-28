@@ -5,10 +5,10 @@ import { auth } from "@clerk/nextjs/server";
 /* ───── GET /api/chat/threads/:threadId/messages ───── */
 export async function GET(
   req: Request,
-  { params }: { params: { threadId: string } }
+  { params }: { params: Promise<{ threadId: string }> }
 ) {
-  /* capture BEFORE any await */
-  const threadId = params.threadId;
+  /* await params first */
+  const { threadId } = await params;
 
   const { searchParams } = new URL(req.url);
   const limit  = Number(searchParams.get("limit") ?? "30");
@@ -25,7 +25,7 @@ export async function GET(
           id: true,
           firstName: true,
           lastName: true,
-          avatarUrl: true,   //  ← remove if you didn’t add this column
+          avatarUrl: true,
         },
       },
     },
@@ -38,9 +38,9 @@ export async function GET(
 /* ───── POST /api/chat/threads/:threadId/messages ───── */
 export async function POST(
   req: Request,
-  { params }: { params: { threadId: string } }
+  { params }: { params: Promise<{ threadId: string }> }
 ) {
-  const threadId = params.threadId;    // ① read sync, *then* do awaits
+  const { threadId } = await params;    // await params first
 
   const { userId } = await auth();
   if (!userId)
