@@ -24,9 +24,12 @@ async function toggleCompletion(fd: FormData) {
   await prisma.project.update({ where: { id }, data: { completed } });
 }
 
-export default async function ProjectPage({ params }: { params: { projectId: string } }) {
+interface PageProps {
+  params: Promise<{ projectId: string }>;   // 👈  promise per new typings
+}
+export default async function ProjectPage({ params }: PageProps) {
   /* read params sync → no runtime warning */
-  const { projectId } = params;
+  const { projectId } = await params;          // ✔ synchronous access
 
   const project = await prisma.project.findUnique({
     where:  { id: projectId },

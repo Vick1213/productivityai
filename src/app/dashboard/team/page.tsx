@@ -166,7 +166,7 @@ export default function TeamPage() {
 }
 
 
-export function ProjectsPane({
+function ProjectsPane({
   projects,
   members,
 }: {
@@ -182,109 +182,109 @@ export function ProjectsPane({
 }
 
 
-function ProjectCard({
-  project,
-  members,
-}: {
-  project: Project;
-  members: Member[];
-}) {
-  /* grab tasks via SWR hook */
-  const { tasks, isLoading, mutate } = useProjectTasks(project.id);
+// function ProjectCard({
+//   project,
+//   members,
+// }: {
+//   project: Project;
+//   members: Member[];
+// }) {
+//   /* grab tasks via SWR hook */
+//   const { tasks, isLoading, mutate } = useProjectTasks(project.id);
 
-  /* helpers */
-  const completed = tasks.filter((t:Task) => t.completed).length;
-  const pct = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
+//   /* helpers */
+//   const completed = tasks.filter((t:Task) => t.completed).length;
+//   const pct = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
 
-  return (
-    <Link
-      href={`/dashboard/projects/${project.id}`}
-      prefetch={false}
-      className="block"
-    >
-      <Card className="relative space-y-4 p-4 hover:shadow">
-        {/* quick-add drawer (on top-right) */}
-        <div className="absolute right-4 top-4">
-          <AddTaskDrawer
-            projectId={project.id}
-            members={members}
-            onCreated={() => mutate()}
-            /* prevent the Link click underneath */
-            triggerProps={{ onClick: (e) => e.stopPropagation() }}
-          />
-        </div>
+//   return (
+//     <Link
+//       href={`/dashboard/projects/${project.id}`}
+//       prefetch={false}
+//       className="block"
+//     >
+//       <Card className="relative space-y-4 p-4 hover:shadow">
+//         {/* quick-add drawer (on top-right) */}
+//         <div className="absolute right-4 top-4">
+//           <AddTaskDrawer
+//             projectId={project.id}
+//             members={members}
+//             onCreated={() => mutate()}
+//             /* prevent the Link click underneath */
+//             triggerProps={{ onClick: (e) => e.stopPropagation() }}
+//           />
+//         </div>
 
-        {/* header row */}
-        <CardTitle className="flex items-center justify-between">
-          <span className="truncate">{project.name}</span>
+//         {/* header row */}
+//         <CardTitle className="flex items-center justify-between">
+//           <span className="truncate">{project.name}</span>
 
-          <Badge variant="outline" className="text-xs">
-            {tasks.length} task{tasks.length !== 1 ? 's' : ''}
-          </Badge>
-        </CardTitle>
+//           <Badge variant="outline" className="text-xs">
+//             {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+//           </Badge>
+//         </CardTitle>
 
-        {/* progress bar */}
-        {!isLoading && tasks.length > 0 && (
-          <>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>
-                Progress&nbsp;–&nbsp;{completed}/{tasks.length} completed
-              </span>
-              <span>{pct}%</span>
-            </div>
-            <div className="h-2 w-full rounded-full bg-gray-200">
-              <div
-                className="h-2 rounded-full bg-blue-600 transition-all"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </>
-        )}
+//         {/* progress bar */}
+//         {!isLoading && tasks.length > 0 && (
+//           <>
+//             <div className="flex items-center justify-between text-xs text-muted-foreground">
+//               <span>
+//                 Progress&nbsp;–&nbsp;{completed}/{tasks.length} completed
+//               </span>
+//               <span>{pct}%</span>
+//             </div>
+//             <div className="h-2 w-full rounded-full bg-gray-200">
+//               <div
+//                 className="h-2 rounded-full bg-blue-600 transition-all"
+//                 style={{ width: `${pct}%` }}
+//               />
+//             </div>
+//           </>
+//         )}
 
-        {/* task list preview */}
-        {isLoading ? (
-          <Skeleton className="h-4 w-1/3" />
-        ) : tasks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tasks yet</p>
-        ) : (
-          <ul className="space-y-2">
-            {tasks.slice(0, 3).map((t:Task) => (
-              <li
-                key={t.id}
-                className="flex items-center justify-between text-sm"
-              >
-                <span className={t.completed ? 'line-through' : ''}>
-                  {t.name}
-                </span>
-                <AssignUserSelect
-                  taskId={t.id}
-                  projectId={project.id}
-                  members={members}
-                  currentId={t.userId}
-                  onChange={() => mutate()}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
+//         {/* task list preview */}
+//         {isLoading ? (
+//           <Skeleton className="h-4 w-1/3" />
+//         ) : tasks.length === 0 ? (
+//           <p className="text-sm text-muted-foreground">No tasks yet</p>
+//         ) : (
+//           <ul className="space-y-2">
+//             {tasks.slice(0, 3).map((t:Task) => (
+//               <li
+//                 key={t.id}
+//                 className="flex items-center justify-between text-sm"
+//               >
+//                 <span className={t.completed ? 'line-through' : ''}>
+//                   {t.name}
+//                 </span>
+//                 <AssignUserSelect
+//                   taskId={t.id}
+//                   projectId={project.id}
+//                   members={members}
+//                   currentId={t.userId}
+//                   onChange={() => mutate()}
+//                 />
+//               </li>
+//             ))}
+//           </ul>
+//         )}
 
-        {/* footer with Details button */}
-        <div className="flex items-center justify-end">
-          <Button
-            asChild
-            size="sm"
-            variant="outline"
-            className="h-7 px-3 text-xs"
-            /* stop card click so link behaves like a normal link */
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Link href={`/dashboard/projects/${project.id}`}>Details</Link>
-          </Button>
-        </div>
-      </Card>
-    </Link>
-  );
-}
+//         {/* footer with Details button */}
+//         <div className="flex items-center justify-end">
+//           <Button
+//             asChild
+//             size="sm"
+//             variant="outline"
+//             className="h-7 px-3 text-xs"
+//             /* stop card click so link behaves like a normal link */
+//             onClick={(e) => e.stopPropagation()}
+//           >
+//             <Link href={`/dashboard/projects/${project.id}`}>Details</Link>
+//           </Button>
+//         </div>
+//       </Card>
+//     </Link>
+//   );
+// }
 /* ───────────────────── helper: Members grid ───────────────────── */
 function MembersPane({
   members,
