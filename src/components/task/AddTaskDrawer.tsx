@@ -24,7 +24,6 @@ export function AddTaskDrawer({
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>
         <Button size="sm" {...triggerProps}>+ New task</Button>
-        <Button size="sm">+ New task</Button>
       </DrawerTrigger>
       <DrawerContent>
         <DrawerHeader>
