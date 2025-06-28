@@ -19,6 +19,7 @@ const toDTO = (org: NonNullable<any>) => ({
   name: org.name,
   createdAt: org.createdAt,
   updatedAt: org.updatedAt,
+
   members: org.users.map((u: any) => ({
     id: u.id,
     firstName: u.firstName,
@@ -30,36 +31,65 @@ const toDTO = (org: NonNullable<any>) => ({
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
   })),
+
+  /* ───── projects now include tasks ───── */
   projects: org.projects.map((p: any) => ({
     id: p.id,
     name: p.name,
     description: p.description,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
+
+    /* new field: tasks array (full list) */
+    tasks: (p.tasks ?? []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      completed: t.completed,
+      priority: t.priority,
+      dueAt: t.dueAt,
+      userId: t.userId,            // needed by AssignUserSelect
+    })),
   })),
 });
 
-// GET /api/team ────────────────────────────────────────────────────────────
 export async function GET() {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
+  /* ── fetch org + members + projects + tasks ───────────────────── */
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
       organization: {
-        include: { users: true, projects: true },
+        include: {
+          users: true,
+          projects: {
+            include: {
+              tasks: {
+                orderBy: { dueAt: "asc" },   // nicer default order
+                select: {
+                  id: true,
+                  name: true,
+                  completed: true,
+                  priority: true,
+                  dueAt: true,
+                  userId: true,              // needed by AssignUserSelect
+                },
+              },
+            },
+          },
+        },
       },
     },
   });
 
   if (!user?.organization) {
-    // Returning null makes the client show the "Create a team" UI
     return NextResponse.json(null);
   }
 
+  /* ensure toDTO doesn’t strip tasks */
   return NextResponse.json(toDTO(user.organization));
 }
 

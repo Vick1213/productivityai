@@ -19,6 +19,7 @@ export interface Member {
   }
   
   export interface Project {
+    tasks: any;
     id: string;
     name: string;
     description?: string | null;
