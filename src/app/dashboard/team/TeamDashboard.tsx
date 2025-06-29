@@ -108,9 +108,12 @@ export default function TeamDashboard({
                   const fresh = await fetch(`/api/orgs/${orgId}`).then((r) =>
                     r.json()
                   );
+                 
+                  
                   // @ts-ignore – mutate local copy
                   organization.projects = fresh.projects;
                 }}
+                 currentOrgId = {orgId}  // pass orgId to dialog
               />
             </div>
             <ProjectsPane

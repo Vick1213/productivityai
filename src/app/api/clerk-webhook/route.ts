@@ -1,30 +1,28 @@
 /* app/api/clerk/webhook/route.ts */
 import { headers } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
-import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
 /* ------------------------------------------------------------------ *
- * 0️⃣  Shared secret & raw payload
+ * 0️⃣  POST /api/clerk/webhook  – handles user.created
  * ------------------------------------------------------------------ */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  /* secret + raw payload ------------------------------------------------ */
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
   if (!WEBHOOK_SECRET)
     return new NextResponse("Missing Clerk webhook secret", { status: 500 });
 
-  const hdrs          = headers();
-  const svixId        = (await hdrs).get("svix-id")        ?? "";
-  const svixTimestamp = (await hdrs).get("svix-timestamp") ?? "";
-  const svixSignature = (await hdrs).get("svix-signature") ?? "";
-  const payload       = await req.text();
+  const hdrs           = headers();
+  const svixId         = (await hdrs).get("svix-id")        ?? "";
+  const svixTimestamp  = (await hdrs).get("svix-timestamp") ?? "";
+  const svixSignature  = (await hdrs).get("svix-signature") ?? "";
+  const rawBody        = await req.text();
 
-  /* ---------------------------------------------------------------- *
-   * 1️⃣  Verify signature
-   * ---------------------------------------------------------------- */
+  /* 1️⃣  Verify signature ----------------------------------------------- */
   let evt: any;
   try {
-    const wh = new Webhook(WEBHOOK_SECRET);
-    evt = wh.verify(payload, {
+    evt = new Webhook(WEBHOOK_SECRET).verify(rawBody, {
       "svix-id":        svixId,
       "svix-timestamp": svixTimestamp,
       "svix-signature": svixSignature,
@@ -34,64 +32,66 @@ export async function POST(req: Request) {
     return new NextResponse("Bad signature", { status: 400 });
   }
 
-  /* only handle user.created */
   if (evt.type !== "user.created") return NextResponse.json({ ok: true });
 
-  /* ---------------------------------------------------------------- *
-   * 2️⃣  Extract user info
-   * ---------------------------------------------------------------- */
+  /* 2️⃣  Extract Clerk user fields -------------------------------------- */
   const {
     id: clerkId,
     email_addresses,
     first_name,
     last_name,
-    profile_image_url,          // ✔ avatar URL from Clerk docs
+    profile_image_url,
   } = evt.data;
 
-  const email      = email_addresses?.[0]?.email_address?.toLowerCase() ?? "";
-  const avatarUrl  = profile_image_url ?? null;
+  const email     = email_addresses?.[0]?.email_address?.toLowerCase() ?? "";
+  const avatarUrl = profile_image_url ?? null;
 
   if (!email) return NextResponse.json({ ok: true });
 
-  /* ---------------------------------------------------------------- *
-   * 3️⃣  Upsert user + connect to invited org(s)
-   * ---------------------------------------------------------------- */
+  /* 3️⃣  Upsert + attach to invited orgs (many-to-many) ----------------- */
   try {
     await prisma.$transaction(async (tx) => {
-      /* 3a. User row */
+      /* 3a. upsert User */
       await tx.user.upsert({
         where:  { id: clerkId },
         update: {
           email,
           firstName: first_name,
           lastName:  last_name,
-          avatarUrl,                 // ← store avatar
+          avatarUrl,
         },
         create: {
           id:        clerkId,
           email,
           firstName: first_name,
           lastName:  last_name,
-          avatarUrl,                 // ← store avatar
+          avatarUrl,
         },
       });
 
-      /* 3b. Pending invites for this e-mail */
+      /* 3b. pending invites for this e-mail */
       const invites = await tx.invite.findMany({
         where:  { email },
-        select: { id: true, organizationId: true },
+        select: { organizationId: true },
       });
 
       if (invites.length) {
-        /* connect user to each organisation */
-        await Promise.all(
-          invites.map((inv) =>
-            tx.organization.update({
-              where: { id: inv.organizationId },
-              data:  { users: { connect: { id: clerkId } } },
-            })
-          )
-        );
+        /* join rows in UserOrganization (role → MEMBER) */
+        await tx.userOrganization.createMany({
+          data: invites.map((inv) => ({
+            userId: clerkId,
+            orgId:  inv.organizationId,
+            role:   "MEMBER",
+          })),
+          skipDuplicates: true,
+        });
+
+        /* optional: set first org as primaryOrgId */
+        await tx.user.update({
+          where: { id: clerkId },
+          data:  { primaryOrgId: invites[0].organizationId },
+        });
+
         /* consume invites */
         await tx.invite.deleteMany({ where: { email } });
       }

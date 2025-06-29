@@ -1,37 +1,40 @@
-import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+/* app/api/orgs/route.ts */
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import prisma from "@/lib/prisma";
 
 /**
  * GET /api/orgs
  *
- * Returns every organisation the signed-in user belongs to,
- * plus quick counts used by the picker UI.
+ * Lists every organisation the signed-in user belongs to, together with
+ * member/project counts (for the org-picker UI).
  */
-export async function GET() {
-  /* 1️⃣  Auth */
+export async function GET(_req: NextRequest) {
+  /* 1️⃣  Auth ---------------------------------------------------- */
   const { userId } = await auth();
   if (!userId)
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
 
-  /* 2️⃣  Find orgs with member & project counts */
+  /* 2️⃣  Orgs via join table ------------------------------------ */
   const orgs = await prisma.organization.findMany({
-    where: { users: { some: { id: userId } } },
+    where: {                 // ↴ via UserOrganization join rows
+      users: { some: { userId } },
+    },
     select: {
       id: true,
       name: true,
-      _count: {
+      _count: {              // fast counts in the same query
         select: { users: true, projects: true },
       },
     },
     orderBy: { name: "asc" },
   });
 
-  /* 3️⃣  Map to the summary DTO expected by useAllOrganisations() */
+  /* 3️⃣  Map to DTO --------------------------------------------- */
   const dto = orgs.map((o) => ({
     id: o.id,
     name: o.name,
-    membersCount: o._count.users,
+    membersCount: o._count.users,     // users = join-rows
     projectsCount: o._count.projects,
   }));
 

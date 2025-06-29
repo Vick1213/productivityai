@@ -82,11 +82,18 @@ model Organization {
   name      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  invites   Invite[]          // 👈  opposite side of the relation
-chatThreads ChatThread[]
-  users     User[]
-  projects  Project[]
+
+  /* many-to-many members via join table */
+  users           UserOrganization[]
+
+  /* primary-org back-reference — add this ↓ */
+  primaryUsers    User[] @relation("PrimaryOrg")
+
+  invites         Invite[]
+  chatThreads     ChatThread[]
+  projects        Project[]
 }
+
 
 model Project {
   id              String   @id @default(uuid())
@@ -107,6 +114,19 @@ model Project {
 
   @@unique([organizationId, name])
 }
+
+model UserOrganization {
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orgId        String
+
+  role         String?      // OWNER / ADMIN / MEMBER etc.
+
+  @@id([userId, orgId])     // composite PK
+}
+
+
 
 model User {
   id             String   @id @default(uuid())
@@ -130,8 +150,11 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-  organizationId String?
+  primaryOrgId String?           // FK but nullable
+  primaryOrg   Organization? @relation("PrimaryOrg", fields:[primaryOrgId], references:[id])
+
+  /// new many-to-many edge
+  orgMemberships UserOrganization[]
 
   tasks          Task[]
   projects       Project[] @relation("UserProjects")

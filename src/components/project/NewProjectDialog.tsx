@@ -20,9 +20,11 @@ import { Member } from "@/types/team";
 export function NewProjectDialog({
   members,
   onSuccess,
+  currentOrgId,
 }: {
   members: Member[];
   onSuccess: () => void;
+  currentOrgId: string;
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -69,6 +71,8 @@ export function NewProjectDialog({
           <div className="flex items-center gap-3">
     <input type="date" name="dueDate" className="border rounded px-3 py-2" />
     <input type="time" name="dueTime" className="border rounded px-3 py-2" />
+    <input type="hidden" name="orgId" value={currentOrgId} />
+
     <label className="flex items-center gap-2 text-sm">
       <input type="checkbox" name="completed" />
       Completed

@@ -1,83 +1,107 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import prisma from '@/lib/prisma';
-import { Resend } from 'resend';
+/* app/api/team/route.ts */
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import prisma from "@/lib/prisma";
+import { Resend } from "resend";
+import { v4 as uuid } from "uuid";
 
-const resend = new Resend(process.env.RESEND_API_KEY!);   // <-- set in .env
+const resend = new Resend(process.env.RESEND_API_KEY!);
 
-/*────────────────────────────────────────────────────────────────────────────
-    /api/team (App-Router)
-
-    • GET   → returns the caller's organisation with members & projects
-    • POST  → creates a new organisation, adds the caller as first member,
-              then sends a Resend email confirming the creation
-────────────────────────────────────────────────────────────────────────────*/
-
-// Helper ────────────────────────────────────────────────────────────────────
+/* ───────────────────────── helpers ────────────────────────── */
 const toDTO = (org: NonNullable<any>) => ({
   id: org.id,
   name: org.name,
   createdAt: org.createdAt,
   updatedAt: org.updatedAt,
 
-  members: org.users.map((u: any) => ({
-    id: u.id,
-    firstName: u.firstName,
-    lastName: u.lastName,
-    email: u.email,
-    jobTitle: u.jobTitle,
-    role: u.role,
-    avatarUrl: u.preferences?.avatarUrl ?? null,
-    createdAt: u.createdAt,
-    updatedAt: u.updatedAt,
+  /* members come through join rows */
+  members: org.users.map((row: any) => ({
+    id: row.user.id,
+    firstName: row.user.firstName,
+    lastName: row.user.lastName,
+    email: row.user.email,
+    jobTitle: row.user.jobTitle,
+    role: row.role ?? "MEMBER",
+    avatarUrl: row.user.avatarUrl,
+    createdAt: row.user.createdAt,
+    updatedAt: row.user.updatedAt,
   })),
 
-  /* ───── projects now include tasks ───── */
   projects: org.projects.map((p: any) => ({
     id: p.id,
     name: p.name,
     description: p.description,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
-
-    /* new field: tasks array (full list) */
-    tasks: (p.tasks ?? []).map((t: any) => ({
+    tasks: p.tasks.map((t: any) => ({
       id: t.id,
       name: t.name,
       completed: t.completed,
       priority: t.priority,
       dueAt: t.dueAt,
-      userId: t.userId,            // needed by AssignUserSelect
+      userId: t.userId,
     })),
   })),
 });
 
+/* ─────────────────────────  GET  /api/team  ───────────────────────── */
 export async function GET() {
   const { userId } = await auth();
-  if (!userId) {
+  if (!userId)
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
-  }
 
-  /* ── fetch org + members + projects + tasks ───────────────────── */
+  /* 1️⃣  pick the user’s “current” org
+        – prefer primaryOrgId, else first membership               */
   const user = await prisma.user.findUnique({
     where: { id: userId },
+    select: { primaryOrgId: true },
+  });
+
+  const membership = await prisma.userOrganization.findFirst({
+    where: {
+      userId,
+      ...(user?.primaryOrgId && { orgId: user.primaryOrgId }),
+    },
+    select: { orgId: true },
+  });
+
+  if (!membership)
+    return NextResponse.json(null); // not in any org yet
+
+  const orgId = membership.orgId;
+
+  /* 2️⃣  fetch org + nested data through join table               */
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
     include: {
-      organization: {
+      users: {
+        select: {
+          role: true,
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              jobTitle: true,
+              avatarUrl: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      },
+      projects: {
         include: {
-          users: true,
-          projects: {
-            include: {
-              tasks: {
-                orderBy: { dueAt: "asc" },   // nicer default order
-                select: {
-                  id: true,
-                  name: true,
-                  completed: true,
-                  priority: true,
-                  dueAt: true,
-                  userId: true,              // needed by AssignUserSelect
-                },
-              },
+          tasks: {
+            orderBy: { dueAt: "asc" },
+            select: {
+              id: true,
+              name: true,
+              completed: true,
+              priority: true,
+              dueAt: true,
+              userId: true,
             },
           },
         },
@@ -85,68 +109,92 @@ export async function GET() {
     },
   });
 
-  if (!user?.organization) {
-    return NextResponse.json(null);
-  }
-
-  /* ensure toDTO doesn’t strip tasks */
-  return NextResponse.json(toDTO(user.organization));
+  return NextResponse.json(toDTO(org));
 }
 
-// POST /api/team ────────────────────────────────────────────────────────────
+/* ─────────────────────────  POST  /api/team  ─────────────────────────
+   Body: { name: string }
+   Creates new org & makes caller OWNER
+--------------------------------------------------------------------- */
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
-  }
+  if (!userId)
+    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
 
-  // Ensure the user is not already in a team
-  const current = await prisma.user.findUnique({ where: { id: userId } });
-  if (current?.organizationId) {
+  const { name = "" } = (await req.json()) as { name?: string };
+  if (!name.trim())
     return NextResponse.json(
-      { error: 'You are already a member of a team' },
-      { status: 409 },
+      { error: "Organization name is required" },
+      { status: 422 }
     );
-  }
 
-  const { name = '' } = (await req.json()) as { name?: string };
-  if (!name.trim()) {
+  /* forbid duplicate name for this user (optional) */
+  const already = await prisma.userOrganization.findMany({
+    where: { userId },
+    include: { organization: true },
+  });
+  if (already.some((m) => m.organization.name === name.trim()))
     return NextResponse.json(
-      { error: 'Organization name is required' },
-      { status: 422 },
+      { error: "You already have an organisation with this name" },
+      { status: 409 }
     );
-  }
 
+  /* create org + join row in one TX */
+  let org;
   try {
-    const org = await prisma.organization.create({
-      data: {
-        name: name.trim(),
-        users: { connect: { id: userId } },
-      },
-      include: { users: true, projects: true },
-    });
+    org = await prisma.$transaction(async (tx) => {
+      const org = await tx.organization.create({
+        data: { name: name.trim() },
+      });
 
-    // Fire-and-forget email (await if you need strict delivery guarantees)
-    resend.emails.send({
-      from: process.env.FROM_EMAIL!,          // e.g. 'Productivity AI <no-reply@your-app.com>'
-      to: current!.email,                    // the creator’s email
-      subject: `🎉 You just created “${org.name}”`,
-      html: `
-        <h2>Welcome to your new team: ${org.name}</h2>
-        <p>You’re all set – start inviting team-mates and creating projects.</p>
-        <p style="font-size:0.9rem;color:#888">If you didn’t request this, just ignore this message.</p>
-      `,
-    }).catch((err) => {
-      // Don’t block the response if email fails – just log for observability
-      console.error('Resend email error:', err);
-    });
+      await tx.userOrganization.create({
+        data: { userId, orgId: org.id, role: "OWNER" },
+      });
 
-    return NextResponse.json(toDTO(org), { status: 201 });
+      await tx.user.update({
+        where: { id: userId },
+        data: { primaryOrgId: org.id },
+      });
+
+      return org;
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json(
-      { error: 'Unable to create organisation' },
-      { status: 500 },
+      { error: "Unable to create organisation" },
+      { status: 500 }
     );
   }
+
+  /* optional “welcome” e-mail */
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (user?.email && process.env.FROM_EMAIL) {
+      await resend.emails.send({
+        from: process.env.FROM_EMAIL,
+        to: user.email,
+        subject: `🎉 You just created “${org.name}”`,
+        html: `
+          <h2>Welcome to your new team: ${org.name}</h2>
+          <p>You’re all set – start inviting team-mates and creating projects.</p>
+        `,
+      });
+    }
+  } catch (mailErr) {
+    console.error("Resend mail error:", mailErr);
+  }
+
+  /* return fresh DTO */
+  const fullOrg = await prisma.organization.findUnique({
+    where: { id: org.id },
+    include: {
+      users: { include: { user: true } },
+      projects: true,
+    },
+  });
+
+  return NextResponse.json(toDTO(fullOrg), { status: 201 });
 }

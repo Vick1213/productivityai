@@ -1,41 +1,49 @@
-// app/api/orgs/[orgId]/members/route.ts
-"use server";
-import { NextResponse } from "next/server";
+/* app/api/orgs/[orgId]/members/route.ts */
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 
 /* GET /api/orgs/:orgId/members */
-export async function GET(
-  _req: Request,
-  { params }: any           // 👈 let Next supply the correct shape
-) {
-  const orgId = params.orgId;        // safe after the first line
+export async function GET(req: NextRequest) {
+  const orgId = req.nextUrl.pathname.split("/").slice(-2)[0];
 
-  /* 1) caller must be signed-in */
+  /* 1️⃣ auth */
   const { userId } = await auth();
   if (!userId)
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
 
-  /* 2) caller must belong to this org */
-  const caller = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { organizationId: true },
+  /* 2️⃣ membership guard via UserOrganization */
+  const membership = await prisma.userOrganization.findUnique({
+    where: { userId_orgId: { userId, orgId } },
+    select: { userId: true },
   });
-  if (caller?.organizationId !== orgId)
+  if (!membership)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  /* 3) members list */
-  const members = await prisma.user.findMany({
-    where: { organizationId: orgId },
-    orderBy: { firstName: "asc" },
+  /* 3️⃣ members list (join rows) */
+  const rows = await prisma.userOrganization.findMany({
+    where: { orgId },
     select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      avatarUrl: true,
-      role: true,
+      role: true,                 // scalar → select
+      user: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          avatarUrl: true,
+        },
+      },
     },
+    orderBy: { user: { firstName: "asc" } },
   });
+
+  const members = rows.map((r) => ({
+    id: r.user.id,
+    firstName: r.user.firstName,
+    lastName: r.user.lastName,
+    avatarUrl: r.user.avatarUrl,
+    role: r.role ?? "MEMBER",
+  }));
 
   return NextResponse.json(members);
 }

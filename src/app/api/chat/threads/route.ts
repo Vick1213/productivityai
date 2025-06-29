@@ -88,13 +88,21 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json(thread, { status: 201 });
 }
-
-/* helper: find the org of the current user */
+/* helper: find *one* organisation the user belongs to */
 async function orgIdForUser(userId: string) {
+  // prefer an explicit primaryOrgId if you kept that column
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { organizationId: true },
+    select: { primaryOrgId: true },
   });
-  if (!user?.organizationId) throw new Error("User has no organization");
-  return user.organizationId;
+  if (user?.primaryOrgId) return user.primaryOrgId;
+
+  // otherwise grab the first membership row
+  const membership = await prisma.userOrganization.findFirst({
+    where: { userId },
+    select: { orgId: true },
+  });
+  if (!membership) throw new Error("User belongs to no organisation");
+
+  return membership.orgId;
 }
