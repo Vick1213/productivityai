@@ -94,7 +94,6 @@ model Organization {
   projects        Project[]
 }
 
-
 model Project {
   id              String   @id @default(uuid())
   name            String
@@ -109,10 +108,26 @@ model Project {
   completed     Boolean @default(false)
   users           User[]   @relation("UserProjects")
   tasks           Task[]
-
-
+  goals           Goal[]  // Add this line
 
   @@unique([organizationId, name])
+}
+
+model Goal {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  currentProgress Int     @default(0)
+  totalTarget    Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId      String
+
+  @@index([projectId])
+  @@unique([projectId, name])
 }
 
 model UserOrganization {

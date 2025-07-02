@@ -7,8 +7,8 @@ import { Separator } from '@/components/ui/separator';
 
 const nav = [
   { href: '/dashboard', icon: Home, label: 'Overview' },
-  { href: '/dashboard/projects', icon: CheckSquare, label: 'Tasks' },
-  { href: '/dashboard?tab=analytics', icon: BarChart2, label: 'Analytics' },
+  { href: '/dashboard/projects', icon: CheckSquare, label: 'Create Project' },
+  { href: '/dashboard/analytics', icon: BarChart2, label: 'Analytics' },
   {href: '/dashboard/team', icon:BookUser, label: 'Team'}, // Assuming Team is the same as Home
   {href: '/dashboard/calendar', icon: Calendar, label: 'Calendar'}, // Assuming Calendar is the same as Home
   {href: '/dashboard/ai', icon: Home, label: 'AI Assistant' }, // Assuming AI Assistant is the same as Home
