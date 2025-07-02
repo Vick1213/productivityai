@@ -3,6 +3,7 @@ import { Topbar } from '@/components/dashboard/topbar';
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { ReactNode } from 'react';
+import { NotificationProvider } from '@/components/notifications/notifications';
 import { ClerkProvider } from '@clerk/nextjs';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
@@ -10,6 +11,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   if (!userId) redirect('/sign-in');
 
   return (
+<NotificationProvider>
+
     <div className="flex min-h-screen bg-muted/40">
       <Sidebar />
       <main className="flex flex-col flex-1">
@@ -18,5 +21,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         
       </main>
     </div>
+    </NotificationProvider>
+
   );
 }
