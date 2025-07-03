@@ -37,7 +37,11 @@ interface Project {
   } | null;
 }
 
-export function ProjectsClient() {
+interface ProjectsClientProps {
+  onCreateProject: () => void;
+}
+
+export function ProjectsClient({onCreateProject}: ProjectsClientProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +74,6 @@ export function ProjectsClient() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <Skeleton className="h-8 w-32" />
-          <Skeleton className="h-10 w-24" />
         </div>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
@@ -100,20 +103,12 @@ export function ProjectsClient() {
 
   return (
     <div className="space-y-6">
-      {/* Header with Create Project button */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h2 className="text-2xl font-bold tracking-tight">Your Projects</h2>
-          <span className="text-sm text-muted-foreground">
-            {projects.length} project{projects.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-        <Button asChild>
-          <Link href="/dashboard/projects/create">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Project
-          </Link>
-        </Button>
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <h2 className="text-2xl font-bold tracking-tight">Your Projects</h2>
+        <span className="text-sm text-muted-foreground">
+          {projects.length} project{projects.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
       {/* Projects Display */}
