@@ -30,6 +30,7 @@ import { Member, Project } from '@/types/team';
 import { ChatDrawer } from '@/components/chat/chatDrawer';
 import { NewProjectDialog } from '@/components/project/NewProjectDialog';
 import { ProjectPanel } from '@/components/dashboard/project-panel';
+import OrganizationSettingsPanel from '@/components/dashboard/team/settings-panel';
 
 /* ───────────────────────── Team dashboard ───────────────────────── */
 export default function TeamDashboard({
@@ -124,7 +125,7 @@ export default function TeamDashboard({
 
           {/* Settings */}
           <TabsContent value="settings" className="mt-6">
-            <ComingSoon icon="⚙️" title="Team Settings" />
+                 <OrganizationSettingsPanel organizationId={orgId} />
           </TabsContent>
         </Tabs>
       </div>

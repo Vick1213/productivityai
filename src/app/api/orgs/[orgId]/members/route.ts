@@ -47,3 +47,41 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(members);
 }
+
+export async function PATCH(req: NextRequest) {
+  const orgId = req.nextUrl.pathname.split("/").slice(-2)[0];
+  const { userId } = await auth();
+  
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  }
+  
+  // Check if current user is an owner
+  const currentUserMembership = await prisma.userOrganization.findUnique({
+    where: { userId_orgId: { userId, orgId } },
+    select: { role: true },
+  });
+  
+  if (!currentUserMembership || currentUserMembership.role !== "OWNER") {
+    return NextResponse.json({ error: "Only owners can update roles" }, { status: 403 });
+  }
+  
+  const { userId: targetUserId, role } = await req.json();
+  
+  // Validate role
+  if (!["OWNER", "ADMIN", "MEMBER"].includes(role)) {
+    return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  }
+  
+  try {
+    await prisma.userOrganization.update({
+      where: { userId_orgId: { userId: targetUserId, orgId } },
+      data: { role },
+    });
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Failed to update user role:", error);
+    return NextResponse.json({ error: "Failed to update user role" }, { status: 500 });
+  }
+} 
