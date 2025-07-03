@@ -2,10 +2,13 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Edit } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { TasksPane } from "./task-pane";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ProjectEditForm } from "./edit-project-form";
+import { GoalsSection } from "./goals-pane";
 
 /* helper: human-readable remaining time */
 function dueCountdown(due: Date | null) {
@@ -25,15 +28,19 @@ async function toggleCompletion(fd: FormData) {
 }
 
 interface PageProps {
-  params: Promise<{ projectId: string }>;   // 👈  promise per new typings
+  params: Promise<{ projectId: string }>;
 }
+
 export default async function ProjectPage({ params }: PageProps) {
   /* read params sync → no runtime warning */
-  const { projectId } = await params;          // ✔ synchronous access
+  const { projectId } = await params;
 
   const project = await prisma.project.findUnique({
-    where:  { id: projectId },
-    include: { users: true },
+    where: { id: projectId },
+    include: { 
+      users: true,
+      goals: true, // Fetch project goals
+    },
   });
   if (!project) notFound();
 
@@ -51,29 +58,14 @@ export default async function ProjectPage({ params }: PageProps) {
         Back to team
       </Link>
 
-      {/* Header */}
-      <header className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-4xl font-bold">{project.name}</h1>
+      {/* Project Details Section with Edit Button */}
+      <ProjectDetailsSection 
+        project={project} 
+        dueLabel={dueLabel} 
+      />
 
-          {dueLabel && (
-            <Badge
-              variant={dueLabel === "Overdue" ? "destructive" : "secondary"}
-              className="text-xs"
-            >
-              {dueLabel}
-            </Badge>
-          )}
-
-          {project.completed && (
-            <Badge variant="outline" className="text-xs text-green-700">
-              ✓ Done
-            </Badge>
-          )}
-        </div>
-
-        <p className="text-muted-foreground">{project.description ?? " "}</p>
-      </header>
+      {/* Goals Section */}
+      <GoalsSection projectId={project.id} goals={project.goals} />
 
       {/* Tasks list */}
       <Suspense fallback={<p className="text-sm">Loading tasks…</p>}>
@@ -98,3 +90,6 @@ export default async function ProjectPage({ params }: PageProps) {
     </main>
   );
 }
+
+// Client component for editable project details section
+import { ProjectDetailsSection } from "./project-details";

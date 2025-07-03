@@ -61,3 +61,72 @@ export async function createProject(form: FormData): Promise<ActionResult | void
 
   revalidatePath('/dashboard');
 }
+export async function deleteProject(projectId: string) {
+  const { userId } = await auth();
+  if (!userId) return { error: 'Unauthenticated' };
+
+  // Ensure the project belongs to the user
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      users: { some: { id: userId } },
+    },
+  });
+
+  if (!project) return { error: 'Project not found or access denied' };
+
+  // Delete the project and all associated tasks and goals
+  await prisma.project.delete({
+    where: { id: projectId }
+  });
+
+  revalidatePath('/dashboard');
+}
+
+export async function updateProjectDetails(
+  projectId: string, 
+  data: { name?: string; description?: string; dueAt?: Date | null }
+) {
+  await prisma.project.update({
+    where: { id: projectId },
+    data
+  });
+  
+  revalidatePath(`/dashboard/projects/${projectId}`);
+}
+
+export async function addGoal(
+  projectId: string,
+  data: { name: string; description?: string; totalTarget: number }
+) {
+  await prisma.goal.create({
+    data: {
+      ...data,
+      projectId,
+      currentProgress: 0
+    }
+  });
+  
+  revalidatePath(`/dashboard/projects/${projectId}`);
+}
+
+export async function updateGoal(
+  goalId: string,
+  projectId: string,
+  data: { name?: string; description?: string; totalTarget?: number; currentProgress?: number }
+) {
+  await prisma.goal.update({
+    where: { id: goalId },
+    data
+  });
+  
+  revalidatePath(`/dashboard/projects/${projectId}`);
+}
+
+export async function deleteGoal(goalId: string, projectId: string) {
+  await prisma.goal.delete({
+    where: { id: goalId }
+  });
+  
+  revalidatePath(`/dashboard/projects/${projectId}`);
+}
