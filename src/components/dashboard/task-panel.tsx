@@ -71,7 +71,7 @@ function AddTaskForm({
   return (
     <form action={onAdd} className="flex flex-col gap-4">
       {/* ------------- title ------------- */}
-      <Input name="title" placeholder="New task…" required />
+      <Input name="name" placeholder="New task…" required />
 
       {/* ------------- start date / time ------------- */}
       <div className="flex flex-wrap items-end gap-4">
@@ -86,7 +86,7 @@ function AddTaskForm({
           <label className="mb-1 text-xs font-medium text-muted-foreground">
             Starts&nbsp;•&nbsp;Time
           </label>
-          <Input name="startTime" type="time" className="w-32" required />
+          <Input name="time" type="time" className="w-32" required />
         </div>
 
         {/* ------------- due date / time ------------- */}
