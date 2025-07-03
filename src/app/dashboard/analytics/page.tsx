@@ -1,6 +1,6 @@
 'use client';
 
-import { ProjectPanel } from '@/components/dashboard/project-panel';
+import { AnalyticsPanel } from '@/components/dashboard/analytics-panel';
 import { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -11,7 +11,7 @@ export default function AnalyticsClient() {
   useEffect(() => {
     async function fetchProjects() {
       try {
-        const response = await fetch('/api/team');
+        const response = await fetch('/api/projects');
         const data = await response.json();
         setProjects(data.projects || []);
       } catch (error) {
@@ -26,13 +26,13 @@ export default function AnalyticsClient() {
 
   if (loading) {
     return (
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="space-y-6">
         {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-64 w-full" />
+          <Skeleton key={i} className="h-96 w-full" />
         ))}
       </div>
     );
   }
 
-  return <ProjectPanel projects={projects} />;
+  return <AnalyticsPanel projects={projects} />;
 }
