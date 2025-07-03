@@ -1,155 +1,72 @@
-import { auth } from "@clerk/nextjs/server";
-import prisma from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
+/* app/api/tasks/[id]/route.ts */
+import { NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
+import prisma from '@/lib/prisma';
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+/* ───────── GET /api/tasks/:id ───────── */
+export async function GET(req: Request, { params }: any) {
+  const taskId = params.id;          // ← safe, params is inferred
+
   const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
-  }
+  if (!userId)
+    return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
-  try {
-    const taskId = params.id;
-    const body = await request.json();
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, userId },
+    include: {
+      project:  { select: { id: true, name: true } },
+      tags:     { select: { id: true, name: true } },
+      subtasks: { select: { id: true, name: true, completed: true } },
+    },
+  });
 
-    // Verify the task belongs to the user
-    const existingTask = await prisma.task.findFirst({
-      where: {
-        id: taskId,
-        userId: userId,
-      },
-    });
+  if (!task)
+    return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
-    if (!existingTask) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    // Update the task with provided fields
-    const updatedTask = await prisma.task.update({
-      where: {
-        id: taskId,
-      },
-      data: {
-        ...body,
-        updatedAt: new Date(),
-      },
-      include: {
-        project: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        tags: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        subtasks: {
-          select: {
-            id: true,
-            name: true,
-            completed: true,
-          },
-        },
-      },
-    });
-
-    return NextResponse.json(updatedTask);
-  } catch (error) {
-    console.error("Error updating task:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
+  return NextResponse.json(task);
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+/* ───────── PATCH /api/tasks/:id ───────── */
+export async function PATCH(req: Request, { params }: any) {
+  const taskId = params.id;
   const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
-  }
+  if (!userId)
+    return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
-  try {
-    const taskId = params.id;
+  const exists = await prisma.task.findFirst({
+    where: { id: taskId, userId },
+    select: { id: true },
+  });
+  if (!exists)
+    return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
-    const task = await prisma.task.findFirst({
-      where: {
-        id: taskId,
-        userId: userId,
-      },
-      include: {
-        project: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        tags: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        subtasks: {
-          select: {
-            id: true,
-            name: true,
-            completed: true,
-          },
-        },
-      },
-    });
-
-    if (!task) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    return NextResponse.json(task);
-  } catch (error) {
-    console.error("Error fetching task:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
+  const data = await req.json();
+  const updated = await prisma.task.update({
+    where: { id: taskId },
+    data:  { ...data, updatedAt: new Date() },
+    include: {
+      project:  { select: { id: true, name: true } },
+      tags:     { select: { id: true, name: true } },
+      subtasks: { select: { id: true, name: true, completed: true } },
+    },
+  });
+  return NextResponse.json(updated);
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+/* ───────── DELETE /api/tasks/:id ───────── */
+export async function DELETE(_req: Request, { params }: any) {
+  const taskId = params.id;
   const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
-  }
+  if (!userId)
+    return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
-  try {
-    const taskId = params.id;
+  const exists = await prisma.task.findFirst({
+    where: { id: taskId, userId },
+    select: { id: true },
+  });
+  if (!exists)
+    return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
-    // Verify the task belongs to the user
-    const existingTask = await prisma.task.findFirst({
-      where: {
-        id: taskId,
-        userId: userId,
-      },
-    });
-
-    if (!existingTask) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    await prisma.task.delete({
-      where: {
-        id: taskId,
-      },
-    });
-
-    return NextResponse.json({ message: "Task deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting task:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
+  await prisma.task.delete({ where: { id: taskId } });
+  return NextResponse.json({ message: 'Task deleted successfully' });
 }
