@@ -75,7 +75,29 @@ model Invite {
   organizationId String
   createdAt      DateTime @default(now())
 }
+enum IntegrationProvider {
+  SMARTLEADS   /// Smartlead clientId / campaignId
+  // ADD MORE LATER (eg. HUBSPOT, SALESFORCE, …)
+}
 
+model IntegrationAccount {
+  id             String              @id @default(uuid())
+  provider       IntegrationProvider
+  externalId     String              // Smartlead **clientId**
+  apiKey         String?             // store token/secret if needed
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  /// FK → Organisation that owns the account
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  /// A Smartlead client can own many campaigns ⇒ many projects
+  projects       Project[]
+
+  @@index([provider, externalId])
+  @@unique([provider, externalId])   // never duplicate the same external account
+}
 
 model Organization {
   id        String   @id @default(uuid())
@@ -86,8 +108,10 @@ model Organization {
   /* many-to-many members via join table */
   users           UserOrganization[]
 
-  /* primary-org back-reference — add this ↓ */
   primaryUsers    User[] @relation("PrimaryOrg")
+  
+  integrationAccounts IntegrationAccount[]
+
 
   invites         Invite[]
   chatThreads     ChatThread[]
@@ -100,15 +124,19 @@ model Project {
   description     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   organization    Organization? @relation(fields: [organizationId], references: [id])
   organizationId  String?
 
+  // Smartlead integration
+  smartleadCampaignId  String?  @unique
+  integrationAccountId String?             // FK
+  integrationAccount   IntegrationAccount? @relation(fields: [integrationAccountId], references: [id], onDelete: Cascade)
+
   dueAt          DateTime?
-  completed     Boolean @default(false)
-  users           User[]   @relation("UserProjects")
-  tasks           Task[]
-  goals           Goal[]  // Add this line
+  completed      Boolean  @default(false)
+  users          User[]   @relation("UserProjects")
+  tasks          Task[]
+  goals          Goal[]
 
   @@unique([organizationId, name])
 }
@@ -129,6 +157,7 @@ model Goal {
   @@index([projectId])
   @@unique([projectId, name])
 }
+
 
 model UserOrganization {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
