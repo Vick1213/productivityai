@@ -1,30 +1,36 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@clerk/nextjs";
+import { toast } from "sonner";
+
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardFooter,
+  CardDescription,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
-import { 
-  Check, 
-  Loader2, 
-  Save, 
-  Users, 
-  Building, 
-  Link as LinkIcon,
-  AlertTriangle,
-  Lock
-} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+
 import {
   Table,
+  TableHeader,
+  TableHead,
+  TableRow,
   TableBody,
   TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@/components/ui/table";
 import {
   Select,
@@ -33,9 +39,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { useAuth } from "@clerk/nextjs";
 
+import {
+  Building,
+  Users,
+  Link as LinkIcon,
+  Loader2,
+  Check,
+  Save,
+  AlertTriangle,
+  Lock,
+} from "lucide-react";
+
+/* ──────────────── types ──────────────── */
 type User = {
   id: string;
   firstName: string;
@@ -44,11 +60,9 @@ type User = {
   role: string;
 };
 
-type Organization = {
-  id: string;
-  name: string;
-  clientId?: string;
-};
+type Organization = { id: string; name: string };
+
+type SmartleadsClient = { id: string; name: string };
 
 type SmartleadsCampaign = {
   id: string;
@@ -62,253 +76,169 @@ const USER_ROLES = [
   { value: "MEMBER", label: "Member" },
 ];
 
-export function OrganizationSettingsPanel({ 
-  organizationId 
-}: { 
+/* ──────────────── component ──────────────── */
+export function OrganizationSettingsPanel({
+  organizationId,
+}: {
   organizationId: string;
 }) {
-    const { userId } = useAuth();
+  const { userId } = useAuth();
+
+  /* loading / saving */
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("general");
-  
-  // Organization state
-  const [organization, setOrganization] = useState<Organization>({ id: organizationId, name: "" });
 
-  // Users state
+  /* organisation + members */
+  const [organization, setOrganization] = useState<Organization>({
+    id: organizationId,
+    name: "",
+  });
   const [users, setUsers] = useState<User[]>([]);
-  const [currentUserRole, setCurrentUserRole] = useState<string>("");
   const [isOwner, setIsOwner] = useState(false);
-  
-  // Smartleads integration state
-  const [smartleadsApiKey, setSmartleadsApiKey] = useState("");
-  const [clientId, setClientId] = useState("");
-  const [isIntegrationValid, setIsIntegrationValid] = useState(false);
-  const [campaigns, setCampaigns] = useState<SmartleadsCampaign[]>([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
 
-  // Load initial data
+  /* SmartLeads – step 1 */
+  const [smartleadsApiKey, setSmartleadsApiKey] = useState("");
+  const [clients, setClients] = useState<SmartleadsClient[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState("");
+
+  /* SmartLeads – step 2 */
+  const [campaigns, setCampaigns] = useState<SmartleadsCampaign[]>([]);
+  const [loadingSmartleads, setLoadingSmartleads] = useState(false);
+  const integrationReady =
+    smartleadsApiKey &&
+    selectedClientId &&
+    campaigns.length > 0 &&
+    campaigns.some((c) => c.isSelected);
+
+  /* active tab */
+  const [activeTab, setActiveTab] = useState("general");
+
+  /* ────────── fetch organisation & members ────────── */
   useEffect(() => {
-    fetchOrganizationData();
+    (async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/orgs/${organizationId}`);
+        if (!res.ok) throw new Error("Failed to fetch organisation");
+
+        const data = await res.json();
+        setOrganization({ id: data.id, name: data.name });
+        setUsers(
+          data.members.map((m: any) => ({
+            id: m.id,
+            firstName: m.firstName,
+            lastName: m.lastName,
+            email: m.email,
+            role: m.role || "MEMBER",
+          })),
+        );
+        const me = data.members.find((m: any) => m.id === userId);
+        setIsOwner(me?.role === "OWNER");
+      } catch (e) {
+        toast.error("Could not load organisation");
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId]);
 
-  const fetchOrganizationData = async () => {
-    setIsLoading(true);
-    try {
-      // Use the API from orgs/[orgId]/route.ts
-      const orgResponse = await fetch(`/api/orgs/${organizationId}`);
-      
-      if (!orgResponse.ok) {
-        throw new Error("Failed to load organization data");
-      }
-      
-      const orgData = await orgResponse.json();
-      
-      setOrganization({
-        id: orgData.id,
-        name: orgData.name,
-        clientId: orgData.clientId
-      });
-      
-      // Set users from members array
-      setUsers(orgData.members.map((member: any) => ({
-        id: member.id,
-        firstName: member.firstName,
-        lastName: member.lastName,
-        email: member.email,
-        role: member.role || "MEMBER"
-      })));
-      
-      // Find current user's role
-      const currentUser = orgData.members.find((member: any) => member.id === userId);
-      
-      if (currentUser) {
-        setCurrentUserRole(currentUser.role || "MEMBER");
-        setIsOwner(currentUser.role === "OWNER");
-      }
-      
-      // Fetch integration settings if available
-      try {
-        const integrationResponse = await fetch(`/api/orgs/${organizationId}/integrations`);
-        if (integrationResponse.ok) {
-          const integrationData = await integrationResponse.json();
-          if (integrationData.smartleads) {
-            setSmartleadsApiKey(integrationData.smartleads.apiKey || "");
-            setClientId(integrationData.smartleads.clientId || "");
-            setIsIntegrationValid(!!integrationData.smartleads.apiKey && !!integrationData.smartleads.clientId);
-          }
-        }
-      } catch (error) {
-        // Integration might not be set up yet, no need to show error
-        console.log("No integration settings found");
-      }
-      
-    } catch (error) {
-      console.error("Failed to load organization data:", error);
-      toast.error("Failed to load organization settings");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  /* ────────── handlers ────────── */
 
-  const handleSaveGeneralSettings = async () => {
-    if (!isOwner) {
-      toast.error("Only organization owners can update settings");
-      return;
-    }
-    
+  /** General tab */
+  const handleSaveGeneral = async () => {
+    if (!isOwner) return toast.error("Owner only");
     setIsSaving(true);
     try {
-      // Need to implement a PATCH endpoint for /api/orgs/[orgId]
-      const response = await fetch(`/api/orgs/${organizationId}`, {
+      const res = await fetch(`/api/orgs/${organizationId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: organization.name, clientId: organization.clientId }),
+        body: JSON.stringify({ name: organization.name }),
       });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to update organization");
-      }
-      
-      toast.success("Organization settings updated successfully");
-    } catch (error) {
-      console.error("Failed to update organization:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to update organization settings");
+      if (!res.ok) throw new Error((await res.json()).message);
+      toast.success("Organisation updated");
+    } catch (e: any) {
+      toast.error(e.message ?? "Save failed");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleUpdateUserRole = async (userId: string, newRole: string) => {
-    if (!isOwner) {
-      toast.error("Only organization owners can change user roles");
-      return;
-    }
+  /** SmartLeads: verify key / load clients or campaigns */
+  const handleSmartleadsLoad = async () => {
+    if (!isOwner) return toast.error("Owner only");
+    if (!smartleadsApiKey) return toast.error("Enter your API key");
 
-    // Validate the role value
-    const validRoles = ["OWNER", "ADMIN", "MEMBER"];
-    if (!validRoles.includes(newRole)) {
-      toast.error(`Invalid role: ${newRole}. Must be one of: ${validRoles.join(", ")}`);
-      return;
-    }
-
+    setLoadingSmartleads(true);
     try {
-      console.log(`Updating user ${userId} to role ${newRole}`);
-      
-      // Updated endpoint to match your API structure
-      const response = await fetch(`/api/orgs/${organizationId}/members`, {
-        method: "PATCH", // or POST depending on your API implementation
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          userId: userId,
-          role: newRole 
-        }),
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        console.error("Role update error response:", data);
-        throw new Error(data.error || "Failed to update user role");
-      }
-      
-      setUsers(users.map(user => 
-        user.id === userId ? { ...user, role: newRole } : user
-      ));
-      
-      toast.success("User role updated successfully");
-    } catch (error) {
-      console.error("Failed to update user role:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to update user role");
-    }
-  };
+      const body: any = { apiKey: smartleadsApiKey };
+      if (selectedClientId) body.clientId = selectedClientId;
 
-  const handleVerifySmartleadsIntegration = async () => {
-    if (!isOwner) {
-      toast.error("Only organization owners can manage integrations");
-      return;
-    }
-
-    if (!smartleadsApiKey || !clientId) {
-      toast.error("API key and Client ID are required");
-      return;
-    }
-
-    setLoadingCampaigns(true);
-    try {
-      // Would need to implement this endpoint
-      const response = await fetch(`/api/integrations/smartleads/verify`, {
+      const res = await fetch(`/api/integrations/smartleads/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          apiKey: smartleadsApiKey, 
-          clientId: clientId,
-          organizationId: organizationId
-        }),
+        body: JSON.stringify(body),
       });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to verify integration");
+      if (!res.ok) throw new Error((await res.json()).message);
+
+      const data = await res.json();
+      if (data.mode === "clients") {
+        setClients(data.clients);
+        toast.success("Choose a client to continue");
+      } else {
+        setCampaigns(
+          data.campaigns.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            isSelected: false,
+          })),
+        );
+        toast.success("Campaigns loaded");
       }
-      
-      const data = await response.json();
-      
-      setIsIntegrationValid(true);
-      setCampaigns(data.campaigns.map((campaign: any) => ({
-        id: campaign.id,
-        name: campaign.name,
-        isSelected: false
-      })));
-      
-      toast.success("SmartLeads integration verified successfully");
-    } catch (error) {
-      console.error("Failed to verify SmartLeads integration:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to verify integration");
-      setIsIntegrationValid(false);
+    } catch (e: any) {
+      toast.error(e.message ?? "SmartLeads error");
+      setClients([]);
+      setCampaigns([]);
     } finally {
-      setLoadingCampaigns(false);
+      setLoadingSmartleads(false);
     }
   };
 
-  const handleSaveSmartleadsIntegration = async () => {
-    if (!isOwner) {
-      toast.error("Only organization owners can manage integrations");
-      return;
-    }
-
+  /** Persist SmartLeads selection */
+  const handleSaveSmartleads = async () => {
+    if (!isOwner) return;
     setIsSaving(true);
     try {
-      // Need to implement this endpoint
-      const response = await fetch(`/api/orgs/${organizationId}/integrations/smartleads`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: smartleadsApiKey,
-          clientId: clientId,
-          selectedCampaigns: campaigns.filter(c => c.isSelected).map(c => c.id)
-        }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to save integration");
-      }
-      
-      toast.success("SmartLeads integration saved successfully");
-    } catch (error) {
-      console.error("Failed to save SmartLeads integration:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to save integration settings");
+      const res = await fetch(
+        `/api/orgs/${organizationId}/integrations/smartleads`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey: smartleadsApiKey,
+            clientId: selectedClientId,
+            selectedCampaigns: campaigns
+              .filter((c) => c.isSelected)
+              .map((c) => c.id),
+          }),
+        },
+      );
+      if (!res.ok) throw new Error((await res.json()).error);
+      toast.success("Integration saved");
+    } catch (e: any) {
+      toast.error(e.message ?? "Save failed");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const toggleCampaignSelection = (campaignId: string) => {
-    setCampaigns(campaigns.map(campaign => 
-      campaign.id === campaignId ? { ...campaign, isSelected: !campaign.isSelected } : campaign
-    ));
-  };
+  /* ────────── helpers ────────── */
+  const OwnerOnly = () => (
+    <Badge variant="outline" className="ml-2">
+      <Lock className="w-3 h-3 mr-1" />
+      Owner only
+    </Badge>
+  );
 
   if (isLoading) {
     return (
@@ -318,14 +248,7 @@ export function OrganizationSettingsPanel({
     );
   }
 
-  // Access control notice component
-  const OwnerOnlyBadge = () => (
-    <Badge variant="outline" className="ml-2">
-      <Lock className="w-3 h-3 mr-1" />
-      Owner only
-    </Badge>
-  );
-
+  /* ────────── UI ────────── */
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -333,7 +256,7 @@ export function OrganizationSettingsPanel({
         {!isOwner && (
           <Badge variant="secondary">
             <Lock className="w-4 h-4 mr-2" />
-            View only mode - Contact an organization owner to make changes
+            View only
           </Badge>
         )}
       </div>
@@ -342,29 +265,25 @@ export function OrganizationSettingsPanel({
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="general" className="flex items-center gap-2">
             <Building className="w-4 h-4" />
-            <span>General</span>
+            General
           </TabsTrigger>
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
-            <span>Users</span>
+            Users
           </TabsTrigger>
           <TabsTrigger value="integrations" className="flex items-center gap-2">
             <LinkIcon className="w-4 h-4" />
-            <span>Integrations</span>
+            Integrations
           </TabsTrigger>
         </TabsList>
-        
-        {/* General Settings Tab */}
+
+        {/* ─────────── General ─────────── */}
         <TabsContent value="general">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                General Settings
-                {!isOwner && <OwnerOnlyBadge />}
+                General Settings {!isOwner && <OwnerOnly />}
               </CardTitle>
-              <CardDescription>
-                Manage your organization's basic information.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -372,54 +291,42 @@ export function OrganizationSettingsPanel({
                 <Input
                   id="org-name"
                   value={organization.name}
-                  onChange={(e) => setOrganization({...organization, name: e.target.value})}
-                  placeholder="Enter organization name"
-                  disabled={!isOwner}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="client-id">Client ID (Optional)</Label>
-                <Input
-                  id="client-id"
-                  value={organization.clientId || ""}
-                  onChange={(e) => setOrganization({...organization, clientId: e.target.value})}
-                  placeholder="Enter client ID (optional)"
+                  onChange={(e) =>
+                    setOrganization({ ...organization, name: e.target.value })
+                  }
                   disabled={!isOwner}
                 />
               </div>
             </CardContent>
             <CardFooter>
-              <Button 
-                onClick={handleSaveGeneralSettings} 
+              <Button
+                onClick={handleSaveGeneral}
                 disabled={isSaving || !isOwner}
                 className="ml-auto"
               >
                 {isSaving ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving
                   </>
                 ) : (
                   <>
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Changes
+                    <Save className="w-4 h-4 mr-2" /> Save
                   </>
                 )}
               </Button>
             </CardFooter>
           </Card>
         </TabsContent>
-        
-        {/* Users Tab */}
+
+        {/* ─────────── Users ─────────── */}
         <TabsContent value="users">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                User Permissions
-                {!isOwner && <OwnerOnlyBadge />}
+                User Permissions {!isOwner && <OwnerOnly />}
               </CardTitle>
               <CardDescription>
-                Manage user roles and permissions within your organization.
+                Manage roles for members of this organisation.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -429,37 +336,58 @@ export function OrganizationSettingsPanel({
                     <TableHead>User</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
-                    {isOwner && <TableHead className="w-[100px]">Actions</TableHead>}
+                    {isOwner && <TableHead className="w-[120px]">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
-                    <TableRow key={user.id}>
+                  {users.map((u) => (
+                    <TableRow key={u.id}>
                       <TableCell className="font-medium">
-                        {user.firstName} {user.lastName}
+                        {u.firstName} {u.lastName}
                       </TableCell>
-                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{u.email}</TableCell>
                       <TableCell>
                         {isOwner ? (
-                          <Select 
-                            defaultValue={user.role} 
-                            onValueChange={(value) => handleUpdateUserRole(user.id, value)}
+                          <Select
+                            defaultValue={u.role}
+                            onValueChange={async (val) => {
+                              try {
+                                const r = await fetch(
+                                  `/api/orgs/${organizationId}/members`,
+                                  {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      userId: u.id,
+                                      role: val,
+                                    }),
+                                  },
+                                );
+                                if (!r.ok) throw new Error((await r.json()).error);
+                                setUsers((prev) =>
+                                  prev.map((x) =>
+                                    x.id === u.id ? { ...x, role: val } : x,
+                                  ),
+                                );
+                                toast.success("Role updated");
+                              } catch (e: any) {
+                                toast.error(e.message ?? "Update failed");
+                              }
+                            }}
                           >
                             <SelectTrigger className="w-[140px]">
-                              <SelectValue placeholder="Select role" />
+                              <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {USER_ROLES.map((role) => (
-                                <SelectItem key={role.value} value={role.value}>
-                                  {role.label}
+                              {USER_ROLES.map((r) => (
+                                <SelectItem key={r.value} value={r.value}>
+                                  {r.label}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         ) : (
-                          <Badge variant="outline">
-                            {user.role || "MEMBER"}
-                          </Badge>
+                          <Badge variant="outline">{u.role}</Badge>
                         )}
                       </TableCell>
                       {isOwner && (
@@ -474,123 +402,151 @@ export function OrganizationSettingsPanel({
                 </TableBody>
               </Table>
             </CardContent>
-            <CardFooter>
-              {isOwner && (
-                <Button className="ml-auto">
-                  <Users className="w-4 h-4 mr-2" />
-                  Invite Users
-                </Button>
-              )}
-            </CardFooter>
           </Card>
         </TabsContent>
-        
-        {/* Integrations Tab */}
+
+        {/* ─────────── Integrations ─────────── */}
         <TabsContent value="integrations">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                SmartLeads Integration
-                {!isOwner && <OwnerOnlyBadge />}
+                SmartLeads Integration {!isOwner && <OwnerOnly />}
               </CardTitle>
               <CardDescription>
-                Connect your SmartLeads account to import campaigns and track performance.
+                Enter your SmartLeads API key, pick a client, then select the
+                campaigns to import.
               </CardDescription>
             </CardHeader>
+
             <CardContent className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="api-key">SmartLeads API Key</Label>
-                  <Input
-                    id="api-key"
-                    type="password"
-                    value={smartleadsApiKey}
-                    onChange={(e) => setSmartleadsApiKey(e.target.value)}
-                    placeholder="Enter your SmartLeads API key"
-                    disabled={!isOwner}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="client-id">Client ID</Label>
-                  <Input
-                    id="client-id"
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    placeholder="Enter your SmartLeads Client ID"
-                    disabled={!isOwner}
-                  />
-                </div>
+              {/* API key */}
+              <div className="space-y-2">
+                <Label htmlFor="api-key">SmartLeads API Key</Label>
+                <Input
+                  id="api-key"
+                  type="password"
+                  value={smartleadsApiKey}
+                  onChange={(e) => {
+                    setSmartleadsApiKey(e.target.value.trim());
+                    setClients([]);
+                    setSelectedClientId("");
+                    setCampaigns([]);
+                  }}
+                  disabled={!isOwner}
+                />
               </div>
-              
+
+              {/* Client select */}
+              {clients.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Select a Client</Label>
+                  <Select
+                    value={selectedClientId}
+                    onValueChange={(v) => {
+                      setSelectedClientId(v);
+                      setCampaigns([]);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Pick a client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name} ({c.id})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Verify / Load button */}
               {isOwner && (
                 <div className="flex justify-end">
-                  <Button 
-                    onClick={handleVerifySmartleadsIntegration}
-                    disabled={!smartleadsApiKey || !clientId || loadingCampaigns}
+                  <Button
+                    onClick={handleSmartleadsLoad}
+                    disabled={
+                      loadingSmartleads ||
+                      !smartleadsApiKey ||
+                      (clients.length > 0 && !selectedClientId)
+                    }
                   >
-                    {loadingCampaigns ? (
+                    {loadingSmartleads ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Verifying...
+                        Loading…
                       </>
                     ) : (
                       <>
                         <Check className="w-4 h-4 mr-2" />
-                        Verify & Load Campaigns
+                        {clients.length === 0 ? "Verify Key" : "Load Campaigns"}
                       </>
                     )}
                   </Button>
                 </div>
               )}
 
-              {isIntegrationValid && (
+              {/* Campaigns */}
+              {campaigns.length > 0 && (
                 <div className="pt-4 border-t">
-                  <h3 className="mb-4 font-medium">Select Campaigns to Import</h3>
-                  
-                  {campaigns.length === 0 ? (
-                    <div className="flex items-center p-4 rounded-md bg-muted">
-                      <AlertTriangle className="w-4 h-4 mr-2 text-amber-500" />
-                      <p className="text-sm">No campaigns found in this SmartLeads account.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {campaigns.map((campaign) => (
-                        <div key={campaign.id} className="flex items-center space-x-2">
-                          <Checkbox 
-                            id={`campaign-${campaign.id}`}
-                            checked={campaign.isSelected}
-                            onCheckedChange={() => isOwner && toggleCampaignSelection(campaign.id)}
-                            disabled={!isOwner}
-                          />
-                          <Label htmlFor={`campaign-${campaign.id}`} className="flex-1">
-                            {campaign.name}
-                          </Label>
-                          <Badge variant="outline" className="ml-auto">
-                            Campaign ID: {campaign.id}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <h3 className="mb-4 font-medium">
+                    Select campaigns to import
+                  </h3>
+                  <div className="space-y-3">
+                    {campaigns.map((c) => (
+                      <div key={c.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`c-${c.id}`}
+                          checked={c.isSelected}
+                          onCheckedChange={() =>
+                            isOwner &&
+                            setCampaigns((prev) =>
+                              prev.map((p) =>
+                                p.id === c.id
+                                  ? { ...p, isSelected: !p.isSelected }
+                                  : p,
+                              ),
+                            )
+                          }
+                        />
+                        <Label
+                          htmlFor={`c-${c.id}`}
+                          className="flex-1 cursor-pointer"
+                        >
+                          {c.name}
+                        </Label>
+                        <Badge variant="outline">ID: {c.id}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {campaigns.length === 0 && selectedClientId && !loadingSmartleads && (
+                <div className="flex items-center p-4 rounded-md bg-muted">
+                  <AlertTriangle className="w-4 h-4 mr-2 text-amber-500" />
+                  <p className="text-sm">
+                    No campaigns found for this client.
+                  </p>
                 </div>
               )}
             </CardContent>
-            {isOwner && isIntegrationValid && (
+
+            {isOwner && integrationReady && (
               <CardFooter>
-                <Button 
-                  onClick={handleSaveSmartleadsIntegration} 
-                  disabled={isSaving || !isIntegrationValid || campaigns.filter(c => c.isSelected).length === 0}
+                <Button
+                  onClick={handleSaveSmartleads}
+                  disabled={isSaving || !integrationReady}
                   className="ml-auto"
                 >
                   {isSaving ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving
                     </>
                   ) : (
                     <>
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Integration Settings
+                      <Save className="w-4 h-4 mr-2" /> Save Integration
                     </>
                   )}
                 </Button>
