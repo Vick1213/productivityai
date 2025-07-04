@@ -49,9 +49,20 @@ export async function POST(
   });
 
   /* ❻  Sync selected campaigns → projects */
+// ...existing code...
+
+  /* ❻  Sync selected campaigns → projects */
   const sl = new SmartleadClient(apiKey);
   const allCampaigns = await sl.listCampaigns(clientId);
   const nameMap = Object.fromEntries(allCampaigns.map((c) => [c.id, c.name]));
+
+  // Get all users from this organization to connect them to projects
+  const orgUsers = await prisma.userOrganization.findMany({
+    where: { orgId },
+    include: { user: true },
+  });
+  
+  const userIds = orgUsers.map(membership => membership.userId);
 
   for (const cid of selectedCampaigns as string[]) {
     await prisma.project.upsert({
@@ -59,12 +70,20 @@ export async function POST(
       update: {
         name: nameMap[cid] ?? `Smartlead Campaign ${cid}`,
         integrationAccountId: integrationAccount.id,
+        // Connect all organization users to this project
+        users: {
+          connect: userIds.map(id => ({ id }))
+        }
       },
       create: {
         name: nameMap[cid] ?? `Smartlead Campaign ${cid}`,
         organizationId: orgId,
         smartleadCampaignId: cid,
         integrationAccountId: integrationAccount.id,
+        // Connect all organization users to this project
+        users: {
+          connect: userIds.map(id => ({ id }))
+        }
       },
     });
   }

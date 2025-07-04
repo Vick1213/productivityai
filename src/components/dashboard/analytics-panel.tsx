@@ -7,6 +7,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -25,7 +26,8 @@ import {
   CheckCircle, 
   Edit3, 
   ExternalLink,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react';
 import { format, isAfter, isBefore, addDays } from 'date-fns';
 import { useRouter } from 'next/navigation';
@@ -56,6 +58,7 @@ interface Project {
   updatedAt: Date;
   completed: boolean;
   dueAt: Date | null;
+  smartleadCampaignId?: string | null;
   tasks: Task[];
   goals: Goal[];
   organization: {
@@ -73,6 +76,7 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isProjectDialogOpen, setIsProjectDialogOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [refreshingProject, setRefreshingProject] = useState<string | null>(null);
 
   // Toggle task completion
   const toggleTaskCompletion = async (taskId: string, currentCompleted: boolean) => {
@@ -98,6 +102,28 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
       console.error('Error updating task:', error);
     } finally {
       setIsUpdating(null);
+    }
+  };
+
+  // SmartLeads refresh
+  const refreshProject = async (project: Project) => {
+    setRefreshingProject(project.id);
+    try {
+      const res = await fetch('/api/integrations/smartleads/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        console.error('Failed to refresh SmartLeads data');
+      }
+    } catch (error) {
+      console.error('Error refreshing SmartLeads data:', error);
+    } finally {
+      setRefreshingProject(null);
     }
   };
 
@@ -147,6 +173,8 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
 
   const highPriorityTasks = getHighPriorityTasks();
   const tasksDueSoon = getTasksDueSoon();
+  const smartleadProjects = projects.filter(p => p.smartleadCampaignId);
+  const normalProjects = projects.filter(p => !p.smartleadCampaignId);
 
   const priorityColor = (p: 'LOW' | 'MEDIUM' | 'HIGH') =>
     p === 'HIGH' ? 'destructive' : p === 'MEDIUM' ? 'default' : 'secondary';
@@ -166,6 +194,80 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
           {projects.length} project{projects.length !== 1 ? 's' : ''}
         </Badge>
       </div>
+
+      {/* SmartLeads Projects Section */}
+      {smartleadProjects.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-2xl font-bold flex items-center gap-2">
+            <RefreshCw className="h-5 w-5" /> SmartLeads Campaigns
+          </h3>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            {smartleadProjects.map(project => (
+              <Card key={project.id} className="hover:shadow-sm transition-shadow">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>{project.name}</CardTitle>
+                      <CardDescription className="text-xs mt-1">
+                        Campaign ID · {project.smartleadCampaignId}
+                      </CardDescription>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => refreshProject(project)}
+                      disabled={refreshingProject === project.id}
+                    >
+                      {refreshingProject === project.id ? (
+                        <>
+                          <Clock className="h-4 w-4 animate-spin mr-1" />Updating
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-1" />Refresh
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="space-y-3">
+                  {project.goals.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No goal metrics yet – click "Refresh" to pull SmartLeads data.
+                    </p>
+                  )}
+
+                  {project.goals.map(g => (
+                    <div key={g.id} className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="font-medium">{g.name}</span>
+                        <span className="text-xs">{g.currentProgress}/{g.totalTarget}</span>
+                      </div>
+                      <Progress value={getGoalProgress(g)} className="h-2" />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{Math.round(getGoalProgress(g))}%</span>
+                        <span>Updated {format(new Date(g.updatedAt), 'MMM d')}</span>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+
+                <CardFooter className="justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openProjectDialog(project)}
+                  >
+                    Details <ExternalLink className="h-4 w-4 ml-1" />
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Priority Tasks Section */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -304,7 +406,7 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
       <div className="space-y-6">
         <h3 className="text-2xl font-bold tracking-tight">Project Progress</h3>
         
-        {projects.map((project) => (
+        {normalProjects.map((project) => (
           <Card key={project.id} className="w-full hover:shadow-lg transition-shadow">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -460,6 +562,11 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
                 </DialogTitle>
                 <DialogDescription>
                   {selectedProject.description || 'No description available'}
+                  {selectedProject.smartleadCampaignId && (
+                    <div className="mt-1 text-xs">
+                      <Badge variant="outline">SmartLeads ID: {selectedProject.smartleadCampaignId}</Badge>
+                    </div>
+                  )}
                 </DialogDescription>
               </DialogHeader>
 

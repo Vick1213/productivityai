@@ -28,6 +28,31 @@ export class SmartleadClient {
     return arr.map((c: any) => ({ id: String(c.id), name: c.name }));
   }
 
+  async fetchCampaignAnalytics(campaignId: string) {
+    const url = `${BASE}/campaigns/${campaignId}/analytics?api_key=${this.apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`SmartLeads analytics → ${res.status}`);
+
+    const j = await res.json();
+    const sent         = Number(j.sent_count          ?? 0);
+    const opens        = Number(j.unique_open_count   ?? j.open_count ?? 0);
+    const replies      = Number(j.reply_count         ?? 0);
+    const positives    = Number(j.campaign_lead_stats?.interested ?? 0);
+
+    /* derived percentages (safe-guard divide-by-0) */
+    const pct = (n: number) => (sent ? (n / sent) * 100 : 0);
+
+    return {
+      sent,
+      opens,
+      replies,
+      positives,
+      openRate:    pct(opens),
+      replyRate:   pct(replies),
+      positivePct: pct(positives),
+    };
+  }
+
   /* ─────────── Campaigns (all → filter) ─────────── */
   async listCampaigns(clientId: string) {
     const results: any[] = [];
