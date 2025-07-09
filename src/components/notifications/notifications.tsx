@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { NotificationPopup } from "./NotificationPopup";
+import { useNotificationStream } from "../../lib/hooks/useNotificationStream";
 
 interface ChatNotification {
   id: string;
@@ -57,7 +58,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const { userId } = useAuth();
 
-  const addNotification = (notification: Notification) => {
+  const addNotification = useCallback((notification: Notification) => {
     setNotifications((prev) => [notification, ...prev]);
     
     // Auto-dismiss after different times based on type
@@ -68,21 +69,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setTimeout(() => {
       dismissNotification(notification.id);
     }, dismissTime);
-  };
+  }, []);
 
   const dismissNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
-  // Poll for new chat messages
-  useEffect(() => {
-    if (!userId) return;
+  // Use SSE stream for real-time notifications
+  const { isConnected } = useNotificationStream(addNotification);
 
-    const checkForNewMessages = async () => {
+  // Fallback: periodically check for notifications if SSE is not connected
+  useEffect(() => {
+    if (!userId || isConnected) return;
+
+    const checkForNotifications = async () => {
       try {
-        const response = await fetch("/api/notifications/chat");
-        if (response.ok) {
-          const newMessages = await response.json();
+        // Check for chat notifications
+        const chatResponse = await fetch("/api/notifications/chat");
+        if (chatResponse.ok) {
+          const newMessages = await chatResponse.json();
           
           newMessages.forEach((msg: any) => {
             const notification: ChatNotification = {
@@ -96,24 +101,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             addNotification(notification);
           });
         }
-      } catch (error) {
-        console.error("Failed to check for new messages:", error);
-      }
-    };
 
-    const interval = setInterval(checkForNewMessages, 100000);
-    return () => clearInterval(interval);
-  }, [userId]);
-
-  // Check for due projects
-  useEffect(() => {
-    if (!userId) return;
-
-    const checkForDueProjects = async () => {
-      try {
-        const response = await fetch("/api/notifications/projects");
-        if (response.ok) {
-          const dueProjects = await response.json();
+        // Check for project notifications
+        const projectResponse = await fetch("/api/notifications/projects");
+        if (projectResponse.ok) {
+          const dueProjects = await projectResponse.json();
           
           dueProjects.forEach((project: any) => {
             const notification: ProjectNotification = {
@@ -127,27 +119,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             addNotification(notification);
           });
         }
-      } catch (error) {
-        console.error("Failed to check for due projects:", error);
-      }
-    };
 
-    const interval = setInterval(checkForDueProjects, 30 * 60 * 1000);
-    checkForDueProjects();
-    return () => clearInterval(interval);
-  }, [userId]);
-
-  // Check for task reminders
-  useEffect(() => {
-    if (!userId) return;
-
-    const checkForTaskReminders = async () => {
-      try {
-        const response = await fetch("/api/notifications/tasks");
-        if (response.ok) {
-          const taskData = await response.json();
+        // Check for task notifications
+        const taskResponse = await fetch("/api/notifications/tasks");
+        if (taskResponse.ok) {
+          const taskData = await taskResponse.json();
           
-          // Handle overdue tasks (most urgent)
+          // Handle overdue tasks
           taskData.overdue?.forEach((task: any) => {
             const notification: TaskNotification = {
               id: `task-overdue-${task.id}`,
@@ -196,15 +174,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           });
         }
       } catch (error) {
-        console.error("Failed to check for task reminders:", error);
+        console.error("Failed to check for notifications:", error);
       }
     };
 
-    // Check every 15 minutes for tasks
-    const interval = setInterval(checkForTaskReminders, 15 * 60 * 1000);
-    checkForTaskReminders();
+    // Only poll as fallback when SSE is not connected
+    const interval = setInterval(checkForNotifications, 60000); // Check every minute as fallback
+    checkForNotifications();
+    
     return () => clearInterval(interval);
-  }, [userId]);
+  }, [userId, isConnected, addNotification]);
 
   return (
     <NotificationContext.Provider

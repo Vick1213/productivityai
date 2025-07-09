@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
+import { broadcastToUser } from "@/lib/notifications";
 
 /* ───── GET /api/chat/threads/:threadId/messages ───── */
 export async function GET(
@@ -58,7 +59,15 @@ export async function POST(
   const msg = await prisma.$transaction(async (tx) => {
     const message = await tx.chatMessage.create({
       data: { threadId, authorId: user.id, body, type },
-      include: { author: true },
+      include: { 
+        author: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          }
+        }
+      },
     });
     await tx.chatThread.update({
       where: { id: threadId },
@@ -66,6 +75,36 @@ export async function POST(
     });
     return message;
   });
+
+  // Get thread participants to send notifications
+  const thread = await prisma.chatThread.findUnique({
+    where: { id: threadId },
+    include: {
+      participants: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  // Broadcast notification to all participants except the sender
+  if (thread) {
+    const notification = {
+      id: `chat-${msg.id}`,
+      type: "chat",
+      threadId: threadId,
+      authorName: `${msg.author.firstName} ${msg.author.lastName}`,
+      message: msg.body || "📣 Ping!",
+      timestamp: new Date(msg.createdAt),
+    };
+
+    thread.participants.forEach((participant) => {
+      if (participant.userId !== userId) {
+        broadcastToUser(participant.userId, notification);
+      }
+    });
+  }
 
   return NextResponse.json(msg, { status: 201 });
 }

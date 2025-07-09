@@ -1,0 +1,252 @@
+import { broadcastToUser } from '@/lib/notifications';
+import prisma from '@/lib/prisma';
+
+interface ChatNotification {
+  id: string;
+  type: "chat";
+  threadId: string;
+  authorName: string;
+  message: string;
+  timestamp: Date;
+}
+
+interface ProjectNotification {
+  id: string;
+  type: "project";
+  projectId: string;
+  projectName: string;
+  dueAt: Date;
+  timestamp: Date;
+}
+
+interface TaskNotification {
+  id: string;
+  type: "task";
+  taskId: string;
+  taskName: string;
+  dueAt?: Date;
+  startsAt?: Date;
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  category: "overdue" | "dueSoon" | "startingSoon";
+  projectName?: string;
+  timestamp: Date;
+}
+
+type Notification = ChatNotification | ProjectNotification | TaskNotification;
+
+// Track which notifications we've already sent to avoid spam
+const sentNotifications = new Set<string>();
+
+// Check for task notifications
+export async function checkTaskNotifications() {
+  try {
+    const now = new Date();
+    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    // Get overdue tasks
+    const overdueTasks = await prisma.task.findMany({
+      where: {
+        dueAt: {
+          lt: now,
+        },
+        completed: false,
+      },
+      include: {
+        project: {
+          select: {
+            name: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    // Get tasks due soon (within 1 hour)
+    const tasksDueSoon = await prisma.task.findMany({
+      where: {
+        dueAt: {
+          gte: now,
+          lte: oneHourFromNow,
+        },
+        completed: false,
+      },
+      include: {
+        project: {
+          select: {
+            name: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    // Get tasks starting soon (within 1 hour)
+    const tasksStartingSoon = await prisma.task.findMany({
+      where: {
+        startsAt: {
+          gte: now,
+          lte: oneHourFromNow,
+        },
+        completed: false,
+      },
+      include: {
+        project: {
+          select: {
+            name: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    // Send overdue task notifications
+    overdueTasks.forEach((task) => {
+      const notificationId = `task-overdue-${task.id}`;
+      if (!sentNotifications.has(notificationId)) {
+        const notification: TaskNotification = {
+          id: notificationId,
+          type: "task",
+          taskId: task.id,
+          taskName: task.name,
+          dueAt: task.dueAt,
+          priority: task.priority as "LOW" | "MEDIUM" | "HIGH",
+          category: "overdue",
+          projectName: task.project?.name,
+          timestamp: new Date(),
+        };
+        
+        broadcastToUser(task.user.id, notification);
+        sentNotifications.add(notificationId);
+      }
+    });
+
+    // Send due soon notifications
+    tasksDueSoon.forEach((task) => {
+      const notificationId = `task-due-${task.id}`;
+      if (!sentNotifications.has(notificationId)) {
+        const notification: TaskNotification = {
+          id: notificationId,
+          type: "task",
+          taskId: task.id,
+          taskName: task.name,
+          dueAt: task.dueAt,
+          priority: task.priority as "LOW" | "MEDIUM" | "HIGH",
+          category: "dueSoon",
+          projectName: task.project?.name,
+          timestamp: new Date(),
+        };
+        
+        broadcastToUser(task.user.id, notification);
+        sentNotifications.add(notificationId);
+      }
+    });
+
+    // Send starting soon notifications
+    tasksStartingSoon.forEach((task) => {
+      const notificationId = `task-start-${task.id}`;
+      if (!sentNotifications.has(notificationId)) {
+        const notification: TaskNotification = {
+          id: notificationId,
+          type: "task",
+          taskId: task.id,
+          taskName: task.name,
+          startsAt: task.startsAt,
+          priority: task.priority as "LOW" | "MEDIUM" | "HIGH",
+          category: "startingSoon",
+          projectName: task.project?.name,
+          timestamp: new Date(),
+        };
+        
+        broadcastToUser(task.user.id, notification);
+        sentNotifications.add(notificationId);
+      }
+    });
+
+  } catch (error) {
+    console.error('Error checking task notifications:', error);
+  }
+}
+
+// Check for project notifications
+export async function checkProjectNotifications() {
+  try {
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    const dueProjects = await prisma.project.findMany({
+      where: {
+        dueAt: {
+          gte: now,
+          lte: tomorrow,
+        },
+      },
+      include: {
+        users: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    dueProjects.forEach((project) => {
+      const notificationId = `project-${project.id}`;
+      if (!sentNotifications.has(notificationId)) {
+        const notification: ProjectNotification = {
+          id: notificationId,
+          type: "project",
+          projectId: project.id,
+          projectName: project.name,
+          dueAt: project.dueAt!,
+          timestamp: new Date(),
+        };
+
+        // Send to all project users
+        project.users.forEach((user) => {
+          broadcastToUser(user.id, notification);
+        });
+        
+        sentNotifications.add(notificationId);
+      }
+    });
+
+  } catch (error) {
+    console.error('Error checking project notifications:', error);
+  }
+}
+
+// Clean up old sent notifications (run daily)
+export function cleanupSentNotifications() {
+  sentNotifications.clear();
+}
+
+// Start the notification service
+export function startNotificationService() {
+  // Check tasks every 5 minutes
+  setInterval(checkTaskNotifications, 5 * 60 * 1000);
+  
+  // Check projects every 30 minutes
+  setInterval(checkProjectNotifications, 30 * 60 * 1000);
+  
+  // Clean up sent notifications daily
+  setInterval(cleanupSentNotifications, 24 * 60 * 60 * 1000);
+  
+  // Run initial checks
+  checkTaskNotifications();
+  checkProjectNotifications();
+  
+  console.log('Notification service started');
+}
