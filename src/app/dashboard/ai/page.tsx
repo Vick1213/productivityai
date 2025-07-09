@@ -3,18 +3,33 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import {
   PanelLeftIcon,
   PanelLeftCloseIcon,
   SendHorizonalIcon,
+  SparklesIcon,
+  BrainIcon,
+  ListTodoIcon,
+  FolderIcon,
+  UsersIcon,
+  TrendingUpIcon
 } from 'lucide-react';
 import clsx from 'clsx';
 import { toast } from 'sonner';
 
+const SUGGESTED_PROMPTS = [
+  { icon: ListTodoIcon, text: "Show me my overdue tasks", category: "Tasks" },
+  { icon: FolderIcon, text: "Analyze my current projects", category: "Projects" },
+  { icon: TrendingUpIcon, text: "Create a task for tomorrow's client meeting", category: "Create" },
+  { icon: UsersIcon, text: "How is my team performing?", category: "Analytics" },
+  { icon: BrainIcon, text: "Suggest improvements for my high-priority tasks", category: "AI Insights" },
+];
+
 /**
- * ChatAssistantPage – /dashboard/chat
+ * ChatAssistantPage – /dashboard/ai
  * ---------------------------------------------------------------
- * Talks to our `/api/ai` endpoint (GET ?q=…) which in turn uses OpenAI
+ * Talks to our `/api/assistant` endpoint which uses OpenAI
  * function-calling to create tasks, list projects, etc.
  */
 export default function ChatAssistantPage() {
@@ -37,7 +52,7 @@ export default function ChatAssistantPage() {
   // ───────── helpers
   const startNewConvo = () => {
     const id = crypto.randomUUID();
-    setConvos((c) => [...c, { id, title: 'Untitled chat' }]);
+    setConvos((c) => [...c, { id, title: 'New AI Chat' }]);
     setCurrentId(id);
     setMessages([]);
   };
@@ -45,11 +60,15 @@ export default function ChatAssistantPage() {
   const saveTitle = (firstAssistantMsg: string) => {
     setConvos((c) =>
       c.map((conv) =>
-        conv.id === currentId && conv.title === 'Untitled chat'
+        conv.id === currentId && conv.title === 'New AI Chat'
           ? { ...conv, title: firstAssistantMsg.slice(0, 40) + '…' }
           : conv,
       ),
     );
+  };
+
+  const handleSuggestedPrompt = (promptText: string) => {
+    setInput(promptText);
   };
 
   // ───────── send
@@ -63,22 +82,55 @@ export default function ChatAssistantPage() {
 
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/ai?q=${encodeURIComponent(prompt)}`);
-        if (!res.ok) throw new Error('Assistant error');
-        const data = await res.json(); // { role: 'assistant', content: '...' }
-
-        const assistantMsg = {
-          role: (data.role ?? 'assistant') as 'assistant',
-          content: data.content ?? '',
-        };
-        setMessages((m) => [...m, assistantMsg]);
-
-        if (messages.filter((m) => m.role === 'assistant').length === 0) {
-          saveTitle(assistantMsg.content);
+        // Use POST for conversation context if we have existing messages
+        if (messages.length > 0) {
+          const res = await fetch('/api/assistant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages, prompt })
+          });
+          
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Assistant error');
+          }
+          
+          const data = await res.json();
+          const assistantMsg = {
+            role: (data.role ?? 'assistant') as 'assistant',
+            content: data.content ?? '',
+          };
+          setMessages((m) => [...m, assistantMsg]);
+        } else {
+          // Use GET for first message
+          const res = await fetch(`/api/assistant?q=${encodeURIComponent(prompt)}`);
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Assistant error');
+          }
+          
+          const data = await res.json();
+          const assistantMsg = {
+            role: (data.role ?? 'assistant') as 'assistant',
+            content: data.content ?? '',
+          };
+          setMessages((m) => [...m, assistantMsg]);
+          
+          // Save title from first response
+          if (assistantMsg.content) {
+            saveTitle(assistantMsg.content);
+          }
         }
       } catch (err) {
         console.error(err);
-        toast.error('Assistant error');
+        const errorMessage = err instanceof Error ? err.message : 'Assistant error';
+        toast.error(errorMessage);
+        
+        // Add error message to chat
+        setMessages((m) => [...m, {
+          role: 'assistant' as const,
+          content: `Sorry, I encountered an error: ${errorMessage}`
+        }]);
       }
     });
   };
@@ -130,15 +182,55 @@ export default function ChatAssistantPage() {
 
         {/* Messages */}
         <div className="flex-1 space-y-6 overflow-y-auto p-6">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="mb-8">
+                <SparklesIcon className="h-16 w-16 text-primary mx-auto mb-4" />
+                <h2 className="text-2xl font-semibold mb-2">AI Productivity Assistant</h2>
+                <p className="text-muted-foreground max-w-md">
+                  I can help you manage tasks, analyze projects, create new items, and provide insights based on your data.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl w-full">
+                {SUGGESTED_PROMPTS.map((prompt, i) => {
+                  const IconComponent = prompt.icon;
+                  return (
+                    <Button
+                      key={i}
+                      variant="outline"
+                      className="h-auto p-4 justify-start text-left"
+                      onClick={() => handleSuggestedPrompt(prompt.text)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <IconComponent className="h-5 w-5 text-primary mt-0.5" />
+                        <div>
+                          <div className="font-medium">{prompt.text}</div>
+                          <Badge variant="secondary" className="text-xs mt-1">
+                            {prompt.category}
+                          </Badge>
+                        </div>
+                      </div>
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          
           {messages.map((m, i) => (
             <div
               key={i}
               className={clsx(
-                'prose max-w-none whitespace-pre-wrap',
-                m.role === 'user' ? 'ml-auto text-right' : 'mr-auto text-left',
+                'max-w-none',
+                m.role === 'user' 
+                  ? 'ml-auto bg-primary text-primary-foreground p-4 rounded-lg max-w-[80%]' 
+                  : 'mr-auto bg-muted p-4 rounded-lg max-w-[90%]',
               )}
             >
-              {m.content}
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <pre className="whitespace-pre-wrap font-sans">{m.content}</pre>
+              </div>
             </div>
           ))}
           <div ref={bottomRef} />
@@ -147,13 +239,29 @@ export default function ChatAssistantPage() {
         {/* Composer */}
         <div className="flex gap-3 border-t p-4">
           <Textarea
-            className="h-20 flex-1 resize-none"
+            className="min-h-[60px] flex-1 resize-none"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Productivity AI…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="Ask about your tasks, projects, or teams... (Press Enter to send, Shift+Enter for new line)"
           />
-          <Button onClick={sendMessage} disabled={!input.trim() || isPending}>
-            Send <SendHorizonalIcon className="ml-1 h-4 w-4" />
+          <Button 
+            onClick={sendMessage} 
+            disabled={!input.trim() || isPending}
+            size="lg"
+          >
+            {isPending ? (
+              <SparklesIcon className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                Send <SendHorizonalIcon className="ml-1 h-4 w-4" />
+              </>
+            )}
           </Button>
         </div>
       </div>

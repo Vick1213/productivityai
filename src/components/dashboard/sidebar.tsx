@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, CheckSquare, BarChart2, Settings, Calendar, BookUser  } from 'lucide-react';
+import { Home, CheckSquare, BarChart2, Settings, Calendar, BookUser, BrainIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 
@@ -9,9 +9,9 @@ const nav = [
   { href: '/dashboard', icon: Home, label: 'Overview' },
   { href: '/dashboard/projects', icon: CheckSquare, label: 'Projects' },
   { href: '/dashboard/analytics', icon: BarChart2, label: 'Analytics' },
-  {href: '/dashboard/team', icon:BookUser, label: 'Team'}, // Assuming Team is the same as Home
-  {href: '/dashboard/calendar', icon: Calendar, label: 'Calendar'}, // Assuming Calendar is the same as Home
-  {href: '/dashboard/ai', icon: Home, label: 'AI Assistant' }, // Assuming AI Assistant is the same as Home
+  {href: '/dashboard/team', icon:BookUser, label: 'Team'},
+  {href: '/dashboard/calendar', icon: Calendar, label: 'Calendar'},
+  {href: '/dashboard/ai', icon: BrainIcon, label: 'AI Assistant' },
   { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
 ];
 
