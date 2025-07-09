@@ -202,66 +202,100 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
             <RefreshCw className="h-5 w-5" /> SmartLeads Campaigns
           </h3>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
             {smartleadProjects.map(project => (
-              <Card key={project.id} className="hover:shadow-sm transition-shadow">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>{project.name}</CardTitle>
-                      <CardDescription className="text-xs mt-1">
-                        Campaign ID · {project.smartleadCampaignId}
+              <Card key={project.id} className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                        {project.name}
+                      </CardTitle>
+                      <CardDescription className="text-xs mt-2 flex items-center gap-1">
+                        <Badge variant="secondary" className="text-xs px-2 py-0">
+                          ID: {project.smartleadCampaignId}
+                        </Badge>
                       </CardDescription>
                     </div>
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant={refreshingProject === project.id ? "secondary" : "outline"}
                       onClick={() => refreshProject(project)}
                       disabled={refreshingProject === project.id}
+                      className="ml-2"
                     >
                       {refreshingProject === project.id ? (
                         <>
-                          <Clock className="h-4 w-4 animate-spin mr-1" />Updating
+                          <Clock className="h-4 w-4 animate-spin mr-1" />
+                          Syncing
                         </>
                       ) : (
                         <>
-                          <RefreshCw className="h-4 w-4 mr-1" />Refresh
+                          <RefreshCw className="h-4 w-4 mr-1" />
+                          Sync
                         </>
                       )}
                     </Button>
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-3">
-                  {project.goals.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      No goal metrics yet – click "Refresh" to pull SmartLeads data.
-                    </p>
-                  )}
-
-                  {project.goals.map(g => (
-                    <div key={g.id} className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="font-medium">{g.name}</span>
-                        <span className="text-xs">{g.currentProgress}/{g.totalTarget}</span>
+                <CardContent className="space-y-4">
+                  {project.goals.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <RefreshCw className="h-8 w-8 text-blue-500" />
                       </div>
-                      <Progress value={getGoalProgress(g)} className="h-2" />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{Math.round(getGoalProgress(g))}%</span>
-                        <span>Updated {format(new Date(g.updatedAt), 'MMM d')}</span>
-                      </div>
+                      <p className="text-sm text-muted-foreground mb-2">
+                        No campaign metrics available
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Click "Refresh" to sync your SmartLeads data
+                      </p>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="grid gap-3">
+                      {project.goals.map(g => (
+                        <div key={g.id} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              <span className="font-semibold text-gray-900">{g.name}</span>
+                            </div>
+                            <div className="bg-white px-3 py-1 rounded-full border shadow-sm">
+                              <span className="text-lg font-bold text-blue-600">{g.currentProgress.toLocaleString()}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">
+                              {g.description || 'Campaign activity'}
+                            </span>
+                            <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded-md">
+                              Updated {format(new Date(g.updatedAt), 'MMM d')}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
 
-                <CardFooter className="justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openProjectDialog(project)}
-                  >
-                    Details <ExternalLink className="h-4 w-4 ml-1" />
-                  </Button>
+                <CardFooter className="pt-4 border-t bg-gray-50/50">
+                  <div className="flex items-center justify-between w-full">
+                    <div className="text-xs text-muted-foreground">
+                      {project.goals.length} metric{project.goals.length !== 1 ? 's' : ''} tracked
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openProjectDialog(project)}
+                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                    >
+                      View Details
+                      <ExternalLink className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
                 </CardFooter>
               </Card>
             ))}
@@ -470,7 +504,7 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
                       <div className="flex items-center justify-between">
                         <h5 className="font-medium">{goal.name}</h5>
                         <span className="text-sm font-medium">
-                          {goal.currentProgress}/{goal.totalTarget}
+                          {goal.currentProgress}
                         </span>
                       </div>
                       
@@ -480,12 +514,8 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
                         </p>
                       )}
                       
-                      <div className="space-y-1">
-                        <Progress value={getGoalProgress(goal)} className="h-2" />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>{Math.round(getGoalProgress(goal))}% complete</span>
-                          <span>Updated {format(new Date(goal.updatedAt), 'MMM d')}</span>
-                        </div>
+                      <div className="text-xs text-muted-foreground text-right">
+                        Updated {format(new Date(goal.updatedAt), 'MMM d')}
                       </div>
                     </div>
                   ))}
@@ -595,9 +625,14 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
                       <div key={goal.id} className="p-3 border rounded-lg space-y-2">
                         <div className="flex justify-between">
                           <span className="font-medium">{goal.name}</span>
-                          <span className="text-sm">{goal.currentProgress}/{goal.totalTarget}</span>
+                          <span className="text-sm font-medium">{goal.currentProgress}</span>
                         </div>
-                        <Progress value={getGoalProgress(goal)} className="h-2" />
+                        {goal.description && (
+                          <p className="text-sm text-muted-foreground">{goal.description}</p>
+                        )}
+                        <div className="text-xs text-muted-foreground text-right">
+                          Updated {format(new Date(goal.updatedAt), 'MMM d')}
+                        </div>
                       </div>
                     ))}
                   </div>
