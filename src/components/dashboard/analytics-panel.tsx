@@ -204,12 +204,12 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
 
           <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
             {smartleadProjects.map(project => (
-              <Card key={project.id} className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
+              <Card key={project.id} className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-[#26D16D]">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <CardTitle className="text-lg flex items-center gap-2">
-                        <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                        <div className="w-3 h-3 bg-[#26D16D] rounded-full animate-pulse"></div>
                         {project.name}
                       </CardTitle>
                       <CardDescription className="text-xs mt-2 flex items-center gap-1">
@@ -243,8 +243,8 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
                 <CardContent className="space-y-4">
                   {project.goals.length === 0 ? (
                     <div className="text-center py-8">
-                      <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <RefreshCw className="h-8 w-8 text-blue-500" />
+                      <div className="w-16 h-16 bg-[#26D16D]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <RefreshCw className="h-8 w-8 text-[#26D16D]" />
                       </div>
                       <p className="text-sm text-muted-foreground mb-2">
                         No campaign metrics available
@@ -256,14 +256,14 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
                   ) : (
                     <div className="grid gap-3">
                       {project.goals.map(g => (
-                        <div key={g.id} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-100">
+                        <div key={g.id} className="bg-gradient-to-r from-[#26D16D]/10 to-[#26D16D]/5 p-4 rounded-lg border border-[#26D16D]/20">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              <div className="w-2 h-2 bg-[#26D16D] rounded-full"></div>
                               <span className="font-semibold text-gray-900">{g.name}</span>
                             </div>
                             <div className="bg-white px-3 py-1 rounded-full border shadow-sm">
-                              <span className="text-lg font-bold text-blue-600">{g.currentProgress.toLocaleString()}</span>
+                              <span className="text-lg font-bold text-[#26D16D]">{g.currentProgress.toLocaleString()}</span>
                             </div>
                           </div>
                           
@@ -290,7 +290,7 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
                       variant="ghost"
                       size="sm"
                       onClick={() => openProjectDialog(project)}
-                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                      className="text-[#26D16D] hover:text-[#26D16D]/80 hover:bg-[#26D16D]/10"
                     >
                       View Details
                       <ExternalLink className="h-4 w-4 ml-1" />
