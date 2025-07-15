@@ -73,6 +73,7 @@ model Invite {
   token          String   @unique
   organization   Organization @relation(fields:[organizationId], references:[id])
   organizationId String
+  isClient       Boolean  @default(false)
   createdAt      DateTime @default(now())
 }
 enum IntegrationProvider {
@@ -179,6 +180,7 @@ model User {
   avatarUrl      String?      // 👈  add this line
 
   lastName       String
+  isClient       Boolean  @default(false)
   chatMessages     ChatMessage[]
 
   chatParticipants ChatParticipant[]

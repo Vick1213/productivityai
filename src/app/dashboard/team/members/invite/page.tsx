@@ -6,30 +6,52 @@ import InviteMembersForm from "./InviteMembersForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function InviteMembersPage() {
+export default async function InviteMembersPage({
+  searchParams,
+}: {
+  searchParams: { orgId?: string };
+}) {
   /* 1️⃣  auth */
   const { userId } = await auth();
   if (!userId) return <p className="p-8">Not signed in.</p>;
 
-  /* 2️⃣  resolve “current” organisation */
-  // — prefer primaryOrgId if you kept that column
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { primaryOrgId: true },
-  });
+  /* 2️⃣  resolve organization ID */
+  let orgId = searchParams.orgId;
 
-  let orgId = user?.primaryOrgId ?? null;
-
-  // — otherwise grab the first membership row
+  // If no orgId in params, fall back to user's primary org or first membership
   if (!orgId) {
-    const membership = await prisma.userOrganization.findFirst({
-      where: { userId },
-      select: { orgId: true },
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { primaryOrgId: true },
     });
-    orgId = membership?.orgId ?? null;
+
+    orgId = user?.primaryOrgId ?? undefined;
+
+    // — otherwise grab the first membership row
+    if (!orgId) {
+      const membership = await prisma.userOrganization.findFirst({
+        where: { userId },
+        select: { orgId: true },
+      });
+      orgId = membership?.orgId ?? undefined;
+    }
   }
 
   if (!orgId) return <p className="p-8">No organisation found.</p>;
+
+  // Verify user has access to this organization
+  const membership = await prisma.userOrganization.findUnique({
+    where: {
+      userId_orgId: {
+        userId,
+        orgId,
+      },
+    },
+  });
+
+  if (!membership) {
+    return <p className="p-8">You don't have access to this organization.</p>;
+  }
 
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
@@ -45,7 +67,7 @@ export default async function InviteMembersPage() {
         <span className="text-blue-600">{org.name}</span>
       </h1>
 
-      {/* Suspense keeps app-router happy even though the form isn’t streaming */}
+      {/* Suspense keeps app-router happy even though the form isn't streaming */}
       <Suspense fallback={null}>
         <InviteMembersForm orgId={org.id} />
       </Suspense>

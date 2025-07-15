@@ -23,23 +23,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid invite' }, { status: 400 });
 
   /* 4️⃣  join org (many-to-many) + consume invite */
-  /* app/api/invite/route.ts  (excerpt) */
-await prisma.$transaction(async (tx) => {
-  /* 4a. join table row (skipDuplicates keeps it idempotent) */
-  await tx.userOrganization.createMany({
-    data: [{ userId, orgId, role: "MEMBER" }],
-    skipDuplicates: true,
-  });
+  await prisma.$transaction(async (tx) => {
+    /* 4a. join table row (skipDuplicates keeps it idempotent) */
+    await tx.userOrganization.createMany({
+      data: [{ userId, orgId, role: "MEMBER" }],
+      skipDuplicates: true,
+    });
 
-  /* 4b. consume invite */
-  await tx.invite.delete({ where: { id: invite.id } });
+    /* 4b. update user to be client if invited as client */
+    if (invite.isClient) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { isClient: true },
+      });
+    }
 
-  /* 4c. set primaryOrgId only if it is still null */
-  await tx.user.updateMany({
-    where: { id: userId, primaryOrgId: null },
-    data:  { primaryOrgId: orgId },
+    /* 4c. consume invite */
+    await tx.invite.delete({ where: { id: invite.id } });
+
+    /* 4d. set primaryOrgId only if it is still null */
+    await tx.user.updateMany({
+      where: { id: userId, primaryOrgId: null },
+      data: { primaryOrgId: orgId },
+    });
   });
-});
 
   return NextResponse.json({ ok: true });
 }

@@ -1,15 +1,16 @@
-import { clerkMiddleware , createRouteMatcher} from '@clerk/nextjs/server';
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-
-
-const isProtectedRoute = createRouteMatcher(['/user(.*)', '/dashboard(.*)'])
-
+const isProtectedRoute = createRouteMatcher(['/user(.*)', '/dashboard(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
-  publicRoutes: ['/api/webhooks']
-  if (isProtectedRoute(req)) await auth.protect()
-    
-})
+  // Protect routes that require authentication
+  if (isProtectedRoute(req)) {
+    await auth.protect();
+  }
+  
+  // We'll handle client restrictions in the dashboard layout component
+  // since middleware can't access Prisma in Edge Runtime
+});
 
 export const config = {
   matcher: [

@@ -11,9 +11,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
 
   /* 2️⃣  body ---------------------------------------------------- */
-  const { orgId, emails } = (await req.json()) as {
+  const { orgId, emails, isClient = false } = (await req.json()) as {
     orgId: string;
     emails: string[];
+    isClient?: boolean;
   };
   if (!orgId || !Array.isArray(emails) || emails.length === 0)
     return NextResponse.json({ error: "Bad payload" }, { status: 400 });
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
         const email = raw.toLowerCase().trim();
         const token = uuid();
         await tx.invite.create({
-          data: { email, token, organizationId: orgId },
+          data: { email, token, organizationId: orgId, isClient },
         });
         return { email, token };
       })
@@ -46,14 +47,15 @@ export async function POST(req: NextRequest) {
   if (process.env.RESEND_API_KEY) {
     const resend = new Resend(process.env.RESEND_API_KEY);
     await Promise.all(
-      invites.map(({ email, token }) =>
+       invites.map(({ email, token }) =>
         resend.emails.send({
           from: "Team Invites <no-reply@productivityai.pro>",
           to: email,
-          subject: "You have been invited to a team",
+          subject: `You have been invited to a team${isClient ? ' as a client' : ''}`,
           html: `
             <p>Hello!</p>
-            <p>You’ve been invited to join a team on Productivity AI.</p>
+            <p>You've been invited to join a team on Productivity AI${isClient ? ' as a client' : ''}.</p>
+            ${isClient ? '<p><strong>Note:</strong> As a client, you will have access to AI, Analytics, Settings, and Teams pages.</p>' : ''}
             <p><a href="${base}/invite?org=${orgId}&token=${token}">
                  Accept invitation
                </a></p>

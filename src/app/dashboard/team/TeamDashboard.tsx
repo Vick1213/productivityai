@@ -89,6 +89,7 @@ export default function TeamDashboard({
           <TabsContent value="members" className="mt-6">
             <MembersPane
               members={organization.members}
+              orgId={orgId}
               onOpenChat={async (m) => {
                 const { threadId } = await ensureDmThread(m.id);
                 setChatTarget({
@@ -160,10 +161,12 @@ function ProjectsPane({
 /* ─────────── Members pane ─────────── */
 function MembersPane({
   members,
+  orgId,
   onOpenChat,
   onPing,
 }: {
   members: Member[];
+  orgId: string;
   onOpenChat: (m: Member) => void;
   onPing: (m: Member) => void;
 }) {
@@ -220,7 +223,7 @@ function MembersPane({
         </Card>
       ))}
 
-      <Link href="/dashboard/team/members/invite">
+      <Link href={`/dashboard/team/members/invite?orgId=${orgId}`}>
         <Card className="group flex cursor-pointer items-center justify-center border-dashed p-4 text-muted-foreground transition hover:bg-muted">
           + Invite member
         </Card>
