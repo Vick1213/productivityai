@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ProductivityAI",
-  description: "A project tracking and note-taking app",
+  title: "SocialScape App",
+  description: "A social productivity and collaboration platform",
 };
 
 export default function RootLayout({

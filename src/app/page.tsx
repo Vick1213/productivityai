@@ -14,8 +14,8 @@ import { ArrowRightIcon } from "lucide-react";
 import { motion } from "framer-motion";
 
 /**
- * Marketing / Landing page (/) for **Productivity AI**
- * Inspired by Evernote.com – hero, features, CTA, footer
+ * Marketing / Landing page (/) for **SocialScape App**
+ * Inspired by modern social productivity platforms
  */
 export default function HomePage() {
   return (
@@ -25,8 +25,8 @@ export default function HomePage() {
         <div className="container mx-auto flex items-center justify-between py-4 px-6">
           {/* Brand */}
           <Link href="/" className="flex items-center gap-2 text-xl font-bold">
-            <Image src="/logo.svg" alt="Productivity AI" width={32} height={32} />
-            Productivity AI
+            <Image src="/logo.svg" alt="SocialScape App" width={32} height={32} />
+            SocialScape App
           </Link>
 
           {/* Auth */}
@@ -46,7 +46,7 @@ export default function HomePage() {
       </header>
 
       {/* HERO */}
-      <section className="bg-[#00A82D]/5 py-24">
+      <section className="bg-[#26D16D]/5 py-24">
         <div className="container mx-auto grid md:grid-cols-2 gap-12 px-6 items-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -55,15 +55,15 @@ export default function HomePage() {
             className="text-center md:text-left"
           >
             <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-6">
-              Organize your work &amp; life <span className="text-[#00A82D]">effortlessly</span>
+              Connect, Collaborate &amp; <span className="text-[#26D16D]">Create Together</span>
             </h1>
             <p className="text-lg text-muted-foreground mb-8 max-w-lg mx-auto md:mx-0">
-              Productivity AI combines a powerful task manager with an AI assistant that schedules, reminds
-              and automates the busywork—so you can focus on what matters most.
+              SocialScape App combines social networking with powerful productivity tools, creating 
+              collaborative workspaces where teams can connect, share ideas, and achieve more together.
             </p>
             <Link href="/dashboard" passHref>
               <Button size="lg" className="px-8 py-6 text-lg">
-                Get started free <ArrowRightIcon className="ml-2 h-5 w-5" />
+                Join the Community <ArrowRightIcon className="ml-2 h-5 w-5" />
               </Button>
             </Link>
           </motion.div>
@@ -77,7 +77,7 @@ export default function HomePage() {
           >
             <Image
               src="/dashboard-screenshot.png"
-              alt="Productivity AI dashboard screenshot"
+              alt="SocialScape App dashboard screenshot"
               width={960}
               height={600}
               placeholder="blur"
@@ -91,10 +91,10 @@ export default function HomePage() {
       {/* FEATURES */}
       <section className="py-24">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Everything you need to stay on track</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Everything you need for social productivity</h2>
           <p className="text-muted-foreground max-w-2xl mx-auto mb-16">
-            From intelligent scheduling to deep-work analytics, Productivity AI replaces your sticky notes,
-            calendar juggling, and browser reminder extensions with one cohesive workspace.
+            From team collaboration to social networking, SocialScape App brings together 
+            communication, project management, and community building in one unified platform.
           </p>
 
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
@@ -176,11 +176,11 @@ export default function HomePage() {
       {/* FOOTER */}
       <footer className="py-12 border-t bg-background">
         <div className="container mx-auto px-6 flex flex-col sm:flex-row justify-between gap-6 text-sm">
-          <p className="text-muted-foreground">© {new Date().getFullYear()} Productivity AI. All rights reserved.</p>
+          <p className="text-muted-foreground">© {new Date().getFullYear()} SocialScape App. All rights reserved.</p>
           <nav className="flex gap-4">
             <Link className="hover:underline" href="/privacy">Privacy</Link>
             <Link className="hover:underline" href="/terms">Terms</Link>
-            <Link className="hover:underline" href="mailto:hello@productivity.ai">Contact</Link>
+            <Link className="hover:underline" href="mailto:hello@socialscape.app">Contact</Link>
           </nav>
         </div>
       </footer>

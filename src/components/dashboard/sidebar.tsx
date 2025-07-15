@@ -19,7 +19,7 @@ export function Sidebar() {
   const pathname = usePathname();
   return (
     <aside className="hidden md:flex w-64 flex-col gap-4 border-r bg-background p-4">
-      <h1 className="text-2xl font-semibold tracking-tight">Productivity AI</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">SocialScape App</h1>
       <Separator />
       <nav className="flex-1 space-y-2">
         {nav.map(({ href, icon: Icon, label }) => (
