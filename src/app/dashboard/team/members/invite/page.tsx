@@ -9,14 +9,15 @@ export const dynamic = "force-dynamic";
 export default async function InviteMembersPage({
   searchParams,
 }: {
-  searchParams: { orgId?: string };
+  searchParams: Promise<{ orgId?: string }>;
 }) {
   /* 1️⃣  auth */
   const { userId } = await auth();
   if (!userId) return <p className="p-8">Not signed in.</p>;
 
   /* 2️⃣  resolve organization ID */
-  let orgId = searchParams.orgId;
+  const params = await searchParams;
+  let orgId = params.orgId;
 
   // If no orgId in params, fall back to user's primary org or first membership
   if (!orgId) {
