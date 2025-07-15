@@ -374,7 +374,7 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-blue-500" />
+              <Calendar className="h-5 w-5 text-[#26D16D]" />
               Due This Week
             </CardTitle>
             <CardDescription>
@@ -428,7 +428,7 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
               </div>
             ) : (
               <div className="text-center py-6">
-                <Calendar className="h-12 w-12 text-blue-500 mx-auto mb-2" />
+                <Calendar className="h-12 w-12 text-[#26D16D] mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">No tasks due this week!</p>
               </div>
             )}
