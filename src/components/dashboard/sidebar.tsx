@@ -1,13 +1,14 @@
 'use client'
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, CheckSquare, BarChart2, Settings, Calendar, BookUser, BrainIcon } from 'lucide-react';
+import { Home, Newspaper,CheckSquare, BarChart2, Settings, Calendar, BookUser, BrainIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useIsClient } from '@/lib/hooks/useIsClient';
 
 const allNavItems = [
   { href: '/dashboard', icon: Home, label: 'Overview', clientAllowed: false },
+  { href: '/dashboard/campaignreports', icon: Newspaper, label: 'Campaign Reports', clientAllowed: false },
   { href: '/dashboard/projects', icon: CheckSquare, label: 'Projects', clientAllowed: false },
   { href: '/dashboard/analytics', icon: BarChart2, label: 'Analytics', clientAllowed: true },
   { href: '/dashboard/team', icon: BookUser, label: 'Team', clientAllowed: true },

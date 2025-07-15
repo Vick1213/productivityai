@@ -25,6 +25,7 @@ export function ClientRestriction({ children }: ClientRestrictionProps) {
             
             // Define allowed paths for clients
             const allowedPaths = [
+              '/dashboad/campaignreports',
               '/dashboard/ai',
               '/dashboard/analytics',
               '/dashboard/settings',
