@@ -15,6 +15,14 @@ enum Priority {
   HIGH
 }
 
+enum LeadStatus {
+  REPLIED
+  POSITIVE
+  BOOKED_MEETING
+  NEGATIVE
+  NO_RESPONSE
+}
+
 /// ─────────────────── chat enums ───────────────────
 enum MessageType {
   TEXT   /// plain text
@@ -138,6 +146,8 @@ model Project {
   users          User[]   @relation("UserProjects")
   tasks          Task[]
   goals          Goal[]
+  campaignReplies CampaignReply[]
+  bookedMeetings  BookedMeeting[]
 
   @@unique([organizationId, name])
 }
@@ -266,4 +276,42 @@ model ActivityLog {
 
   @@index([taskId])
   @@index([userId])
+}
+
+model CampaignReply {
+  id        String     @id @default(uuid())
+  leadName  String
+  leadEmail String
+  status    LeadStatus
+  replyContent String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+
+  bookedMeeting BookedMeeting?
+
+  @@index([projectId])
+  @@index([leadEmail])
+  @@unique([projectId, leadEmail])
+}
+
+model BookedMeeting {
+  id           String    @id @default(uuid())
+  meetingDate  DateTime?
+  meetingTime  String?
+  meetingLink  String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId    String
+
+  reply        CampaignReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  replyId      String        @unique
+
+  @@index([projectId])
+  @@index([meetingDate])
 }

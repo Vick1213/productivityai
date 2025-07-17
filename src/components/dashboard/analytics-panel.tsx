@@ -27,10 +27,12 @@ import {
   Edit3, 
   ExternalLink,
   Clock,
-  RefreshCw
+  RefreshCw,
+  MessageSquare
 } from 'lucide-react';
 import { format, isAfter, isBefore, addDays } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import { CampaignDetailsDialog } from './CampaignDetailsDialog';
 
 interface Goal {
   id: string;
@@ -75,6 +77,8 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
   const router = useRouter();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isProjectDialogOpen, setIsProjectDialogOpen] = useState(false);
+  const [isCampaignDialogOpen, setIsCampaignDialogOpen] = useState(false);
+  const [selectedCampaignProject, setSelectedCampaignProject] = useState<Project | null>(null);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [refreshingProject, setRefreshingProject] = useState<string | null>(null);
 
@@ -136,6 +140,12 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
   const openProjectDialog = (project: Project) => {
     setSelectedProject(project);
     setIsProjectDialogOpen(true);
+  };
+
+  // Open campaign details dialog
+  const openCampaignDialog = (project: Project) => {
+    setSelectedCampaignProject(project);
+    setIsCampaignDialogOpen(true);
   };
 
   // Get high priority tasks across all projects
@@ -286,15 +296,26 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
                     <div className="text-xs text-muted-foreground">
                       {project.goals.length} metric{project.goals.length !== 1 ? 's' : ''} tracked
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openProjectDialog(project)}
-                      className="text-[#26D16D] hover:text-[#26D16D]/80 hover:bg-[#26D16D]/10"
-                    >
-                      View Details
-                      <ExternalLink className="h-4 w-4 ml-1" />
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openCampaignDialog(project)}
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                      >
+                        View Replies
+                        <MessageSquare className="h-4 w-4 ml-1" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openProjectDialog(project)}
+                        className="text-[#26D16D] hover:text-[#26D16D]/80 hover:bg-[#26D16D]/10"
+                      >
+                        View Details
+                        <ExternalLink className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
                   </div>
                 </CardFooter>
               </Card>
@@ -681,6 +702,17 @@ export function AnalyticsPanel({ projects }: AnalyticsPanelProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Campaign Details Dialog */}
+      {selectedCampaignProject && (
+        <CampaignDetailsDialog
+          projectId={selectedCampaignProject.id}
+          projectName={selectedCampaignProject.name}
+          smartleadCampaignId={selectedCampaignProject.smartleadCampaignId || undefined}
+          isOpen={isCampaignDialogOpen}
+          onClose={() => setIsCampaignDialogOpen(false)}
+        />
+      )}
 
       {/* Empty State */}
       {projects.length === 0 && (
