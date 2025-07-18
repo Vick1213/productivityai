@@ -93,14 +93,11 @@ export class SmartleadClient {
   /* ─────────── Campaign Replies ─────────── */
   async fetchCampaignReplies(campaignId: string) {
     const url = `${BASE}/campaigns/${campaignId}/statistics?api_key=${this.apiKey}&email_status=replied&offset=0&limit=500`;
-    console.log(`Fetching campaign replies from: ${url}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`SmartLeads campaign replies → ${res.status}`);
 
     const json = await res.json();
     const data = json.data || [];
-    console.log(`Campaign replies response:`, json);
-    console.log(`Found ${data.length} replies`);
     
     return data.map((reply: any) => ({
       leadName: reply.lead_name,
@@ -121,28 +118,16 @@ export class SmartleadClient {
   /* ─────────── Lead Details ─────────── */
   async fetchLeadByEmail(email: string) {
     const url = `${BASE}/leads?api_key=${this.apiKey}&email=${encodeURIComponent(email)}`;
-    console.log(`SmartLead API URL: ${url}`);
     const res = await fetch(url);
     
-    console.log(`SmartLead API response status: ${res.status}`);
     if (!res.ok) throw new Error(`SmartLeads lead by email → ${res.status}`);
 
     const json = await res.json();
-    console.log('SmartLead API response for email:', email, 'Response:', json);
-    console.log(`Response type: ${typeof json}, Is array: ${Array.isArray(json)}`);
     
-    // The API should return a single lead object or an array with one lead
-    let lead;
-    if (Array.isArray(json) && json.length > 0) {
-      lead = json[0];
-    } else if (json && json.id) {
-      // Sometimes it might return a single object
-      lead = json;
-    } else {
-      lead = null;
-    }
+    // The API returns a single lead object directly (not an array)
+    const lead = json;
     
-    if (!lead) {
+    if (!lead || !lead.id) {
       throw new Error(`Lead not found for email: ${email}. This lead may not exist in your SmartLead account, or the email might be different from what was used in the campaign.`);
     }
     
