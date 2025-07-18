@@ -90,8 +90,11 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
         throw new Error(data.error || 'Failed to process request');
       }
       
+      // Debug: log the response to understand the structure
+      console.log('AI Assistant Response:', data);
+      
       // The API returns the OpenAI message object with content property
-      const aiContent = data.content || data.response || 'Task processed successfully!';
+      const aiContent = data.content || data.response || JSON.stringify(data) || 'Task processed successfully!';
       setAiResponse(aiContent);
       setAiMessage(''); // Clear input after successful request
     } catch (error) {
@@ -108,6 +111,8 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
     setShowAudioCreator(false);
     
     // Automatically send the transcription to AI for task creation
+    setAiResponse('Processing your voice input...');
+    
     try {
       const response = await fetch('/api/assistant', {
         method: 'POST',
@@ -116,10 +121,19 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
       });
       
       const data = await response.json();
-      setAiResponse(data.response || 'Task creation request processed.');
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to process voice input');
+      }
+      
+      // Handle the OpenAI response format
+      const aiContent = data.content || data.response || 'Voice input processed successfully!';
+      setAiResponse(aiContent);
+      setAiMessage(''); // Clear the input after processing
     } catch (error) {
       console.error('AI processing error:', error);
-      setAiResponse('Voice transcribed successfully. Please review and send to create the task.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setAiResponse(`Voice transcribed: "${transcription}"\n\nError processing: ${errorMessage}\n\nPlease review and send manually.`);
     }
   };
 
