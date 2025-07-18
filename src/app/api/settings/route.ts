@@ -29,11 +29,17 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({
             preferences: settings.preferences || '',
-            sleepStart: user.startTime || '22:00',
-            sleepEnd: user.endTime || '07:00',
+            workStart: user.startTime || '09:00',
+            workEnd: user.endTime || '17:00',
             openaiKey: user.openAIKey ? '••••••••' : '', // Mask the key
             openaiModel: user.openAIModel || 'gpt-4o-mini',
-            enableBeta: settings.enableBeta || false
+            enableBeta: settings.enableBeta || false,
+            timeZone: settings.timeZone || 'America/New_York',
+            taskDuration: settings.taskDuration || 60, // Default 1 hour
+            breakDuration: settings.breakDuration || 15, // Default 15 minutes
+            maxTasksPerDay: settings.maxTasksPerDay || 8,
+            preferredTaskTypes: settings.preferredTaskTypes || ['development', 'meetings', 'review'],
+            avoidTimeSlots: settings.avoidTimeSlots || [] // e.g., ['12:00-13:00'] for lunch
         });
     } catch (error) {
         console.error('Error fetching settings:', error);
@@ -48,7 +54,20 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { preferences, sleepStart, sleepEnd, openaiKey, openaiModel, enableBeta } = await req.json();
+        const { 
+            preferences, 
+            workStart, 
+            workEnd, 
+            openaiKey, 
+            openaiModel, 
+            enableBeta,
+            timeZone,
+            taskDuration,
+            breakDuration,
+            maxTasksPerDay,
+            preferredTaskTypes,
+            avoidTimeSlots
+        } = await req.json();
 
         // Check if user exists
         const existingUser = await prisma.user.findUnique({
@@ -61,11 +80,17 @@ export async function POST(req: NextRequest) {
 
         // Prepare update data
         const updateData: any = {
-            startTime: sleepStart,
-            endTime: sleepEnd,
+            startTime: workStart,
+            endTime: workEnd,
             preferences: {
                 preferences,
-                enableBeta
+                enableBeta,
+                timeZone,
+                taskDuration,
+                breakDuration,
+                maxTasksPerDay,
+                preferredTaskTypes,
+                avoidTimeSlots
             }
         };
 

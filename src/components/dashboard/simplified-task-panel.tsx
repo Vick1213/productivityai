@@ -92,17 +92,28 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
       
       // Debug: log the response to understand the structure
       console.log('AI Assistant Response:', data);
+      console.log('Response type:', typeof data);
+      console.log('Response keys:', Object.keys(data));
+      
+      // Check if this is a function call response
+      if (data.function_call) {
+        console.log('Function call detected:', data.function_call);
+        setAiResponse(`Function called: ${data.function_call.name}\nArguments: ${data.function_call.arguments}`);
+        return;
+      }
       
       // The API returns the OpenAI message object with content property
-      const aiContent = data.content || data.response || JSON.stringify(data) || 'Task processed successfully!';
+      const aiContent = data.content || data.message || data.response || JSON.stringify(data) || 'Task processed successfully!';
       setAiResponse(aiContent);
       setAiMessage(''); // Clear input after successful request
       
-      // Refresh the page to show newly created tasks
-      if (aiContent.includes('Successfully created') || aiContent.includes('task')) {
+      // Refresh the page to show newly created tasks or projects
+      if (aiContent.toLowerCase().includes('successfully created') || 
+          aiContent.toLowerCase().includes('project') || 
+          aiContent.toLowerCase().includes('task')) {
         setTimeout(() => {
           window.location.reload();
-        }, 2000);
+        }, 3000); // Give user time to read the response
       }
       
     } catch (error) {
@@ -155,7 +166,7 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
 
   const TaskCard = ({ task }: { task: Task }) => (
     <Card className={`
-      transition-all duration-300 ease-in-out hover:shadow-lg hover:scale-[1.02] 
+      transition-all duration-200 ease-in-out hover:shadow-md
       ${task.completed ? 'opacity-60 bg-gray-50' : 'bg-white'} 
       ${task.dueAt && isPast(new Date(task.dueAt)) && !task.completed ? 'border-red-200 bg-red-50' : ''}
       ${task.dueAt && isToday(new Date(task.dueAt)) && !task.completed ? 'border-orange-200 bg-orange-50' : ''}
@@ -207,7 +218,7 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
             variant="ghost"
             size="sm"
             onClick={() => startTransition(() => deleteTask(task.id))}
-            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-100 hover:text-red-600"
+            className="h-8 w-8 p-0 opacity-70 hover:opacity-100 transition-opacity duration-200 hover:bg-red-100 hover:text-red-600"
           >
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -222,7 +233,7 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
     color: string;
     icon?: React.ReactNode;
   }) => (
-    <div className="space-y-4 group">
+    <div className="space-y-4">
       <div className={`
         flex items-center justify-between p-4 rounded-lg border-l-4 
         ${title === 'Overdue' ? 'border-red-500 bg-red-50' :
@@ -230,7 +241,6 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
           title === 'Due Tomorrow' ? 'border-blue-500 bg-blue-50' :
           title === 'Upcoming' ? 'border-gray-500 bg-gray-50' :
           'border-green-500 bg-green-50'}
-        transition-all duration-200 hover:shadow-sm
       `}>
         <h2 className={`text-lg font-semibold flex items-center gap-2 ${color}`}>
           {icon || <Calendar className="h-5 w-5" />}
@@ -241,17 +251,9 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
         </Badge>
       </div>
       
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 transition-all duration-300">
-        {tasks.map((task, index) => (
-          <div 
-            key={task.id} 
-            className="animate-in slide-in-from-bottom-2 fade-in-0"
-            style={{ animationDelay: `${index * 50}ms` }}
-          >
-            <div className="group">
-              <TaskCard task={task} />
-            </div>
-          </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {tasks.map((task) => (
+          <TaskCard key={task.id} task={task} />
         ))}
       </div>
     </div>

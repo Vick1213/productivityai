@@ -113,6 +113,17 @@ const FUNCTIONS: OpenAI.Chat.ChatCompletionCreateParams.Function[] = [
     }
   },
   {
+    name: 'get_user_schedule_context',
+    description: 'Get user preferences, working hours, and existing tasks to help with intelligent scheduling',
+    parameters: {
+      type: 'object',
+      properties: {
+        includeTasks: { type: 'boolean', description: 'Include existing tasks in the response', default: true },
+        daysAhead: { type: 'number', description: 'Number of days ahead to analyze', default: 14 }
+      }
+    }
+  },
+  {
     name: 'get_project_analytics',
     description: 'Get analytics and insights for a project including task completion rates and team performance',
     parameters: {
@@ -121,6 +132,35 @@ const FUNCTIONS: OpenAI.Chat.ChatCompletionCreateParams.Function[] = [
         projectId: { type: 'string', description: 'Project ID to analyze' }
       },
       required: ['projectId']
+    }
+  },
+  {
+    name: 'create_project_with_tasks',
+    description: 'REQUIRED: Use this when user asks to create a project with tasks, or mentions creating both a project and tasks together. This creates both the project and all its tasks in one operation.',
+    parameters: {
+      type: 'object',
+      properties: {
+        projectName: { type: 'string', description: 'Project name' },
+        projectDescription: { type: 'string', description: 'Project description' },
+        organizationId: { type: 'string', description: 'Organization ID to associate with' },
+        projectDueAt: { type: 'string', description: 'Project due date in ISO format' },
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Task name' },
+              description: { type: 'string', description: 'Task description' },
+              priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
+              dueAt: { type: 'string', description: 'Due date in ISO format' },
+              aiInstructions: { type: 'string', description: 'AI-specific instructions for the task' }
+            },
+            required: ['name', 'description', 'dueAt']
+          },
+          description: 'Array of tasks to create for this project'
+        }
+      },
+      required: ['projectName', 'projectDescription', 'tasks']
     }
   }
 ];
@@ -154,8 +194,12 @@ async function callTool(fn: string, args: any, userId: string) {
       return await createProject(userId, args);
     case 'suggest_task_improvements':
       return await suggestTaskImprovements(userId, args);
+    case 'get_user_schedule_context':
+      return await getUserScheduleContext(userId, args);
     case 'get_project_analytics':
       return await getProjectAnalytics(userId, args);
+    case 'create_project_with_tasks':
+      return await createProjectWithTasks(userId, args);
     default:
       throw new Error(`Unknown function: ${fn}`);
   }
@@ -373,6 +417,261 @@ async function createProject(userId: string, args: any) {
   };
 }
 
+async function createProjectWithTasks(userId: string, args: any) {
+  const { projectName, projectDescription, organizationId, projectDueAt, tasks } = args;
+  
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    throw new Error('Tasks array is required and must not be empty');
+  }
+
+  // First, create the project
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { primaryOrgId: true }
+  });
+
+  const project = await prisma.project.create({
+    data: {
+      name: projectName,
+      description: projectDescription,
+      organizationId: organizationId || user?.primaryOrgId || null,
+      dueAt: projectDueAt ? new Date(projectDueAt) : null,
+      users: { connect: { id: userId } }
+    },
+    include: {
+      organization: { select: { id: true, name: true } }
+    }
+  });
+
+  // Then, create all the tasks for this project
+  const createdTasks = [];
+  const errors = [];
+
+  for (const taskData of tasks) {
+    try {
+      const task = await prisma.task.create({
+        data: {
+          name: taskData.name,
+          description: taskData.description,
+          userId,
+          projectId: project.id, // Associate with the newly created project
+          priority: taskData.priority || 'MEDIUM',
+          startsAt: new Date(),
+          dueAt: new Date(taskData.dueAt),
+          aiInstructions: taskData.aiInstructions || null
+        }
+      });
+      createdTasks.push(task);
+    } catch (error) {
+      errors.push({
+        taskName: taskData.name,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  const successCount = createdTasks.length;
+  const errorCount = errors.length;
+  
+  let message = `Successfully created project "${project.name}"`;
+  if (project.organization) {
+    message += ` in organization "${project.organization.name}"`;
+  }
+  message += ` with ${successCount} task${successCount !== 1 ? 's' : ''}`;
+  
+  if (createdTasks.length > 0) {
+    const taskList = createdTasks.map(task => 
+      `• ${task.name} (${task.priority} priority, due: ${new Date(task.dueAt).toLocaleDateString()})`
+    ).join('\n');
+    message += `:\n\n${taskList}`;
+  }
+  
+  if (errors.length > 0) {
+    message += `\n\nTask creation errors (${errorCount}):\n`;
+    message += errors.map(err => `• ${err.taskName}: ${err.error}`).join('\n');
+  }
+
+  return {
+    project,
+    tasks: createdTasks,
+    errors,
+    successCount,
+    errorCount,
+    totalTasks: tasks.length,
+    message
+  };
+}
+
+async function getUserScheduleContext(userId: string, args: any) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      jobTitle: true,
+      role: true,
+      preferences: true,
+      startTime: true,
+      endTime: true,
+    }
+  });
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  const context: {
+    user: {
+      name: string;
+      jobTitle: string | null;
+      role: string | null;
+      workingHours: {
+        start: string;
+        end: string;
+      };
+      preferences: any;
+    };
+    existingTasks: Array<{
+      id: string;
+      name: string;
+      description: string;
+      priority: string;
+      dueAt: Date;
+      completed: boolean;
+      project: string;
+      estimatedHours: number;
+    }>;
+    schedule: {
+      busyDays: Array<{ day: string; taskCount: number }>;
+      availableSlots: string[];
+      workload: string;
+    };
+  } = {
+    user: {
+      name: `${user.firstName} ${user.lastName}`,
+      jobTitle: user.jobTitle,
+      role: user.role,
+      workingHours: {
+        start: user.startTime || '09:00',
+        end: user.endTime || '17:00'
+      },
+      preferences: user.preferences || {}
+    },
+    existingTasks: [],
+    schedule: {
+      busyDays: [],
+      availableSlots: [],
+      workload: 'normal'
+    }
+  };
+
+  if (args.includeTasks !== false) {
+    const daysAhead = args.daysAhead || 14;
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + daysAhead);
+
+    const tasks = await prisma.task.findMany({
+      where: {
+        userId,
+        dueAt: {
+          gte: new Date(),
+          lte: endDate
+        }
+      },
+      include: {
+        project: { select: { id: true, name: true } }
+      },
+      orderBy: { dueAt: 'asc' }
+    });
+
+    context.existingTasks = tasks.map(task => ({
+      id: task.id,
+      name: task.name,
+      description: task.description,
+      priority: task.priority,
+      dueAt: task.dueAt,
+      completed: task.completed,
+      project: task.project?.name || 'Personal',
+      estimatedHours: extractEstimatedHours(task.description, task.aiInstructions)
+    }));
+
+    // Analyze workload
+    const incompleteTasks = tasks.filter(t => !t.completed);
+    const highPriorityTasks = incompleteTasks.filter(t => t.priority === 'HIGH');
+    const tasksThisWeek = incompleteTasks.filter(t => {
+      const weekFromNow = new Date();
+      weekFromNow.setDate(weekFromNow.getDate() + 7);
+      return new Date(t.dueAt) <= weekFromNow;
+    });
+
+    context.schedule.workload = 
+      highPriorityTasks.length > 5 ? 'heavy' :
+      tasksThisWeek.length > 10 ? 'busy' :
+      tasksThisWeek.length < 3 ? 'light' : 'normal';
+
+    // Group tasks by day to identify busy periods
+    const tasksByDay = tasks.reduce((acc, task) => {
+      const day = new Date(task.dueAt).toDateString();
+      acc[day] = (acc[day] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    context.schedule.busyDays = Object.entries(tasksByDay)
+      .filter(([_, count]) => count > 3)
+      .map(([day, count]) => ({ day, taskCount: count }));
+
+    // Suggest available time slots based on working hours and existing tasks
+    context.schedule.availableSlots = generateAvailableSlots(
+      user.startTime || '09:00',
+      user.endTime || '17:00',
+      tasks
+    );
+  }
+
+  return {
+    ...context,
+    message: `Retrieved schedule context for ${user.firstName}. Current workload: ${context.schedule.workload}. ${context.existingTasks.length} tasks in the next ${args.daysAhead || 14} days.`
+  };
+}
+
+function extractEstimatedHours(description: string, aiInstructions: string | null): number {
+  // Look for time estimates in description or AI instructions
+  const text = `${description} ${aiInstructions || ''}`.toLowerCase();
+  const hourMatch = text.match(/(\d+)\s*hours?/);
+  const minMatch = text.match(/(\d+)\s*minutes?/);
+  
+  if (hourMatch) return parseInt(hourMatch[1]);
+  if (minMatch) return Math.ceil(parseInt(minMatch[1]) / 60);
+  
+  // Default estimates based on common task patterns
+  if (text.includes('meeting') || text.includes('call')) return 1;
+  if (text.includes('review') || text.includes('check')) return 0.5;
+  if (text.includes('research') || text.includes('analyze')) return 2;
+  if (text.includes('develop') || text.includes('build') || text.includes('create')) return 4;
+  
+  return 1; // Default 1 hour
+}
+
+function generateAvailableSlots(startTime: string, endTime: string, tasks: any[]): string[] {
+  const slots = [];
+  const workStart = parseInt(startTime.split(':')[0]);
+  const workEnd = parseInt(endTime.split(':')[0]);
+  
+  // Simple algorithm: suggest morning, midday, and afternoon slots
+  // that don't conflict with existing task patterns
+  const busyHours = tasks.map(task => new Date(task.dueAt).getHours());
+  
+  for (let hour = workStart; hour < workEnd; hour += 2) {
+    if (!busyHours.includes(hour)) {
+      const timeSlot = `${hour.toString().padStart(2, '0')}:00-${(hour + 2).toString().padStart(2, '0')}:00`;
+      slots.push(timeSlot);
+    }
+  }
+  
+  return slots.slice(0, 3); // Return top 3 available slots
+}
+
 async function suggestTaskImprovements(userId: string, args: any) {
   const task = await prisma.task.findFirst({
     where: {
@@ -557,27 +856,49 @@ export async function GET(req: NextRequest) {
         {
           role: 'system',
           content: `You are a productivity AI assistant that helps users manage their tasks, projects, and teams. 
-          You have access to their database and can:
-          - View and analyze tasks, projects, and team data
-          - Create single tasks using create_task or multiple tasks at once using create_multiple_tasks
-          - Create new projects
-          - Provide insights and suggestions based on AI instructions and project context
-          - Offer productivity tips and project management advice
-          
-          CURRENT DATE AND TIME: ${formattedDate} at ${timeStr}
-          
-          When users request multiple tasks (e.g., "Create tasks for my morning routine", "Break down this project into tasks", "Create a weekly agenda"), 
-          use the create_multiple_tasks function instead of create_task to handle them efficiently.
-          
-          For due dates, parse natural language using the current date as reference:
-          - "today" = ${formattedDate}
-          - "tomorrow" = the day after today
-          - "Wednesday" = the next Wednesday (if today is Wednesday, use next Wednesday)
-          - "next Friday" = the Friday of next week
-          - "in 2 weeks" = 2 weeks from today
-          - If no date specified, set to end of today
-          
-          Be helpful, concise, and actionable in your responses. When suggesting improvements, be specific and practical.`
+      You have access to their database and can:
+      - View and analyze tasks, projects, and team data
+      - Create single tasks using create_task or multiple tasks at once using create_multiple_tasks
+      - Create new projects using create_project
+      - Create a project with tasks in one operation using create_project_with_tasks (USE THIS when users ask to "create a project and add tasks" or similar)
+      - Get user schedule context including preferences, working hours, and existing tasks
+      - Provide intelligent scheduling based on workload and availability
+      - Offer productivity tips and project management advice
+      
+      CURRENT DATE AND TIME: ${formattedDate} at ${timeStr}
+      
+      IMPORTANT: When users ask you to create projects or tasks, you MUST actually call the appropriate function to create them in the database. Do not just describe what you would create - actually create them!
+      
+      WHEN TO USE WHICH FUNCTION:
+      - If user asks to "create a project with tasks", "create a project and add tasks", or describes a project with multiple tasks: use create_project_with_tasks
+      - If user asks to create multiple tasks without a specific project: use create_multiple_tasks
+      - If user asks to create a single task: use create_task
+      - If user asks to create just a project without specific tasks: use create_project
+      
+      INTELLIGENT SCHEDULING:
+      When creating projects or multiple tasks, ALWAYS first call get_user_schedule_context to understand:
+      - User's working hours and preferences
+      - Current workload and existing tasks
+      - Busy periods and available time slots
+      - Task priorities and deadlines
+      
+      Use this context to:
+      - Schedule tasks during available time slots
+      - Avoid overloading busy days
+      - Respect user's working hours
+      - Consider task complexity and user's current workload
+      - Space out similar types of tasks
+      - Prioritize based on existing deadlines
+      
+      For due dates, parse natural language using the current date as reference:
+      - "today" = ${formattedDate}
+      - "tomorrow" = the day after today
+      - "Wednesday" = the next Wednesday (if today is Wednesday, use next Wednesday)
+      - "next Friday" = the Friday of next week
+      - "in 2 weeks" = 2 weeks from today
+      - If no date specified, schedule based on available slots and workload
+      
+      ALWAYS call the function to actually create what the user requests. Be helpful, concise, and actionable in your responses.`
         },
         { role: 'user', content: prompt }
       ],
@@ -685,14 +1006,36 @@ export async function POST(req: NextRequest) {
       You have access to their database and can:
       - View and analyze tasks, projects, and team data
       - Create single tasks using create_task or multiple tasks at once using create_multiple_tasks
-      - Create new projects
-      - Provide insights and suggestions based on AI instructions and project context
+      - Create new projects using create_project
+      - Create a project with tasks in one operation using create_project_with_tasks (USE THIS when users ask to "create a project and add tasks" or similar)
+      - Get user schedule context including preferences, working hours, and existing tasks
+      - Provide intelligent scheduling based on workload and availability
       - Offer productivity tips and project management advice
       
       CURRENT DATE AND TIME: ${formattedDate} at ${timeStr}
       
-      When users request multiple tasks (e.g., "Create tasks for my morning routine", "Break down this project into tasks", "Create a weekly agenda"), 
-      use the create_multiple_tasks function instead of create_task to handle them efficiently.
+      IMPORTANT: When users ask you to create projects or tasks, you MUST actually call the appropriate function to create them in the database. Do not just describe what you would create - actually create them!
+      
+      WHEN TO USE WHICH FUNCTION:
+      - If user asks to "create a project with tasks", "create a project and add tasks", or describes a project with multiple tasks: use create_project_with_tasks
+      - If user asks to create multiple tasks without a specific project: use create_multiple_tasks
+      - If user asks to create a single task: use create_task
+      - If user asks to create just a project without specific tasks: use create_project
+      
+      INTELLIGENT SCHEDULING:
+      When creating projects or multiple tasks, ALWAYS first call get_user_schedule_context to understand:
+      - User's working hours and preferences
+      - Current workload and existing tasks
+      - Busy periods and available time slots
+      - Task priorities and deadlines
+      
+      Use this context to:
+      - Schedule tasks during available time slots
+      - Avoid overloading busy days
+      - Respect user's working hours
+      - Consider task complexity and user's current workload
+      - Space out similar types of tasks
+      - Prioritize based on existing deadlines
       
       For due dates, parse natural language using the current date as reference:
       - "today" = ${formattedDate}
@@ -700,9 +1043,9 @@ export async function POST(req: NextRequest) {
       - "Wednesday" = the next Wednesday (if today is Wednesday, use next Wednesday)
       - "next Friday" = the Friday of next week
       - "in 2 weeks" = 2 weeks from today
-      - If no date specified, set to end of today
+      - If no date specified, schedule based on available slots and workload
       
-      Be helpful, concise, and actionable in your responses. When suggesting improvements, be specific and practical.`
+      ALWAYS call the function to actually create what the user requests. Be helpful, concise, and actionable in your responses.`
     };
 
     const completion = await openai.chat.completions.create({
