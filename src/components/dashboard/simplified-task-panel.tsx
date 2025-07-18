@@ -75,6 +75,8 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
   const handleAIChat = async () => {
     if (!aiMessage.trim()) return;
     
+    setAiResponse('Processing your request...');
+    
     try {
       const response = await fetch('/api/assistant', {
         method: 'POST',
@@ -83,11 +85,19 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
       });
       
       const data = await response.json();
-      setAiResponse(data.response || 'Sorry, I could not process your request.');
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to process request');
+      }
+      
+      // The API returns the OpenAI message object with content property
+      const aiContent = data.content || data.response || 'Task processed successfully!';
+      setAiResponse(aiContent);
       setAiMessage(''); // Clear input after successful request
     } catch (error) {
       console.error('AI chat error:', error);
-      setAiResponse('Error communicating with AI assistant.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setAiResponse(`Error: ${errorMessage}`);
     }
   };
 
