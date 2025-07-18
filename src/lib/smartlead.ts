@@ -89,4 +89,92 @@ export class SmartleadClient {
       name: c.name,
     }));
   }
+
+  /* ─────────── Campaign Replies ─────────── */
+  async fetchCampaignReplies(campaignId: string) {
+    const url = `${BASE}/campaigns/${campaignId}/statistics?api_key=${this.apiKey}&email_status=replied&offset=0&limit=500`;
+    console.log(`Fetching campaign replies from: ${url}`);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`SmartLeads campaign replies → ${res.status}`);
+
+    const json = await res.json();
+    const data = json.data || [];
+    console.log(`Campaign replies response:`, json);
+    console.log(`Found ${data.length} replies`);
+    
+    return data.map((reply: any) => ({
+      leadName: reply.lead_name,
+      leadEmail: reply.lead_email,
+      leadCategory: reply.lead_category,
+      sequenceNumber: reply.sequence_number,
+      statsId: reply.stats_id,
+      emailSubject: reply.email_subject,
+      emailMessage: reply.email_message,
+      sentTime: reply.sent_time,
+      openTime: reply.open_time,
+      clickTime: reply.click_time,
+      replyTime: reply.reply_time,
+      emailCampaignSeqId: reply.email_campaign_seq_id,
+    }));
+  }
+
+  /* ─────────── Lead Details ─────────── */
+  async fetchLeadByEmail(email: string) {
+    const url = `${BASE}/leads?api_key=${this.apiKey}&email=${encodeURIComponent(email)}`;
+    console.log(`SmartLead API URL: ${url}`);
+    const res = await fetch(url);
+    
+    console.log(`SmartLead API response status: ${res.status}`);
+    if (!res.ok) throw new Error(`SmartLeads lead by email → ${res.status}`);
+
+    const json = await res.json();
+    console.log('SmartLead API response for email:', email, 'Response:', json);
+    console.log(`Response type: ${typeof json}, Is array: ${Array.isArray(json)}`);
+    
+    // The API should return a single lead object or an array with one lead
+    let lead;
+    if (Array.isArray(json) && json.length > 0) {
+      lead = json[0];
+    } else if (json && json.id) {
+      // Sometimes it might return a single object
+      lead = json;
+    } else {
+      lead = null;
+    }
+    
+    if (!lead) {
+      throw new Error(`Lead not found for email: ${email}. This lead may not exist in your SmartLead account, or the email might be different from what was used in the campaign.`);
+    }
+    
+    return {
+      id: lead.id,
+      firstName: lead.first_name,
+      lastName: lead.last_name,
+      email: lead.email,
+      phoneNumber: lead.phone_number,
+      companyName: lead.company_name,
+      website: lead.website,
+      location: lead.location,
+      customFields: lead.custom_fields,
+      linkedinProfile: lead.linkedin_profile,
+      companyUrl: lead.company_url,
+      isUnsubscribed: lead.is_unsubscribed,
+      createdAt: lead.created_at,
+    };
+  }
+
+  /* ─────────── Message History ─────────── */
+  async fetchLeadMessageHistory(campaignId: string, leadId: string) {
+    const url = `${BASE}/campaigns/${campaignId}/leads/${leadId}/message-history?api_key=${this.apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`SmartLeads message history → ${res.status}`);
+
+    const json = await res.json();
+    
+    return {
+      history: json.history || [],
+      from: json.from,
+      to: json.to,
+    };
+  }
 }

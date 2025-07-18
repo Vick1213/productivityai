@@ -15,9 +15,8 @@ import {
   RefreshCw, 
   Mail, 
   MessageSquare, 
-  Calendar,
-  CheckCircle2,
-  User
+  User,
+  ExternalLink
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -45,6 +44,8 @@ interface CampaignDetailsProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+
 
 export function CampaignDetailsDialog({
   projectId,
@@ -115,34 +116,9 @@ export function CampaignDetailsDialog({
     }
   };
 
-  const bookMeeting = async (replyId: string) => {
-    try {
-      const response = await fetch(`/api/campaigns/${projectId}/meetings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          replyId,
-          meetingDate: new Date().toISOString(),
-          notes: 'Meeting booked from analytics panel'
-        }),
-      });
-
-      if (response.ok) {
-        // Refresh the replies to show updated status
-        fetchReplies();
-      } else {
-        console.error('Failed to book meeting');
-      }
-    } catch (error) {
-      console.error('Error booking meeting:', error);
-    }
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-7xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
@@ -223,53 +199,31 @@ export function CampaignDetailsDialog({
             ) : (
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {replies.map((reply) => (
-                  <div key={reply.id} className="border rounded-lg p-4 bg-white">
-                    <div className="flex items-center justify-between mb-2">
+                  <div key={reply.id} className="border rounded-lg p-4 bg-white hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{reply.leadName}</span>
-                        <span className="text-sm text-muted-foreground">({reply.leadEmail})</span>
+                        <div>
+                          <p className="font-medium">{reply.leadName}</p>
+                          <p className="text-sm text-muted-foreground">{reply.leadEmail}</p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         {getStatusBadge(reply.status)}
-                        {reply.status === 'POSITIVE' && !reply.bookedMeeting && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => bookMeeting(reply.id)}
-                            className="gap-1"
-                          >
-                            <Calendar className="h-3 w-3" />
-                            Book Meeting
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            // Navigate to detailed view
+                            window.location.href = `/dashboard/campaigns/${projectId}/leads/${encodeURIComponent(reply.leadEmail)}`;
+                          }}
+                          className="gap-1"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View Details
+                        </Button>
                       </div>
                     </div>
-
-                    {reply.replyContent && (
-                      <div className="bg-gray-50 p-2 rounded text-sm mb-2">
-                        {reply.replyContent}
-                      </div>
-                    )}
-
-                    {reply.bookedMeeting && (
-                      <div className="bg-blue-50 p-2 rounded text-sm">
-                        <div className="flex items-center gap-1 font-medium text-blue-800">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Meeting Scheduled
-                        </div>
-                        {reply.bookedMeeting.meetingDate && (
-                          <p className="text-blue-700 text-xs">
-                            {format(new Date(reply.bookedMeeting.meetingDate), 'PPp')}
-                          </p>
-                        )}
-                        {reply.bookedMeeting.notes && (
-                          <p className="text-blue-700 text-xs mt-1">
-                            {reply.bookedMeeting.notes}
-                          </p>
-                        )}
-                      </div>
-                    )}
 
                     <div className="text-xs text-muted-foreground mt-2">
                       Added: {format(new Date(reply.createdAt), 'PPp')}

@@ -1,37 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { auth } from '@clerk/nextjs/server';
-
-interface SmartLeadStatistic {
-  lead_name: string;
-  lead_email: string;
-  lead_category: string;
-  sequence_number: number;
-  stats_id: string;
-  email_campaign_seq_id: number;
-  seq_variant_id?: number;
-  email_subject: string;
-  email_message: string;
-}
+import { SmartleadClient } from '@/lib/smartlead';
 
 async function getPositiveAndRepliedLeads(apiKey: string, campaignId: string) {
-  const baseUrl = "https://server.smartlead.ai/api/v1";
-  
   try {
-    // Get all replied leads with their categories
-    const repliedResponse = await fetch(
-      `${baseUrl}/campaigns/${campaignId}/statistics?api_key=${apiKey}&email_status=replied&offset=0&limit=500`
-    );
-    const repliedData = await repliedResponse.json();
-    
-    const repliedStats = (repliedData.data || []) as SmartLeadStatistic[];
+    const smartlead = new SmartleadClient(apiKey);
+    const allRepliedLeads = await smartlead.fetchCampaignReplies(campaignId);
     
     // Categorize leads based on their lead_category
     const positiveCategories = ["Interested", "Meeting Request", "Information Request"];
-    const positiveLeads = repliedStats.filter(stat => 
-      positiveCategories.includes(stat.lead_category)
+    interface CampaignReply {
+      leadName: string;
+      leadEmail: string;
+      leadCategory: string;
+      emailSubject: string;
+      emailMessage: string;
+    }
+
+    const positiveLeads: CampaignReply[] = allRepliedLeads.filter(
+      (reply: CampaignReply) => positiveCategories.includes(reply.leadCategory)
     );
-    const allRepliedLeads = repliedStats;
 
     return {
       positiveLeads,
@@ -85,14 +74,14 @@ export async function GET(
         );
 
         // Sync to database
-        for (const stat of smartleadData.allRepliedLeads) {
-          const isPositive = smartleadData.positiveLeads.some(p => p.lead_email === stat.lead_email);
+        for (const reply of smartleadData.allRepliedLeads) {
+          const isPositive = smartleadData.positiveLeads.some((p: any) => p.leadEmail === reply.leadEmail);
           
           // Check if record exists
           const existingReply = await prisma.campaignReply.findFirst({
             where: {
               projectId: projectId,
-              leadEmail: stat.lead_email
+              leadEmail: reply.leadEmail
             }
           });
 
@@ -103,9 +92,9 @@ export async function GET(
                 id: existingReply.id
               },
               data: {
-                leadName: stat.lead_name,
+                leadName: reply.leadName,
                 status: isPositive ? 'POSITIVE' : 'REPLIED',
-                replyContent: `${stat.email_subject}\n\n${stat.email_message}`,
+                replyContent: `${reply.emailSubject}\n\n${reply.emailMessage}`,
                 updatedAt: new Date()
               }
             });
@@ -114,10 +103,10 @@ export async function GET(
             await prisma.campaignReply.create({
               data: {
                 projectId: projectId,
-                leadName: stat.lead_name,
-                leadEmail: stat.lead_email,
+                leadName: reply.leadName,
+                leadEmail: reply.leadEmail,
                 status: isPositive ? 'POSITIVE' : 'REPLIED',
-                replyContent: `${stat.email_subject}\n\n${stat.email_message}`
+                replyContent: `${reply.emailSubject}\n\n${reply.emailMessage}`
               }
             });
           }
