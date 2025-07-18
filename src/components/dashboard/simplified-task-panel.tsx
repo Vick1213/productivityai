@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, isToday, isTomorrow, isPast } from 'date-fns';
-import { Plus, MessageSquare, Calendar, Clock, Trash2 } from 'lucide-react';
+import { Plus, MessageSquare, Calendar, Clock, Trash2, AlertTriangle, Target, CheckCircle } from 'lucide-react';
 import { AudioTaskCreator } from './audio-task-creator';
 
 interface Task {
@@ -97,6 +97,14 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
       const aiContent = data.content || data.response || JSON.stringify(data) || 'Task processed successfully!';
       setAiResponse(aiContent);
       setAiMessage(''); // Clear input after successful request
+      
+      // Refresh the page to show newly created tasks
+      if (aiContent.includes('Successfully created') || aiContent.includes('task')) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }
+      
     } catch (error) {
       console.error('AI chat error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -117,7 +125,7 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
       const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: `Please create a task based on this voice input: "${transcription}"` }),
+        body: JSON.stringify({ prompt: `Please create task(s) based on this voice input: "${transcription}"` }),
       });
       
       const data = await response.json();
@@ -130,6 +138,14 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
       const aiContent = data.content || data.response || 'Voice input processed successfully!';
       setAiResponse(aiContent);
       setAiMessage(''); // Clear the input after processing
+      
+      // Refresh the page to show newly created tasks
+      if (aiContent.includes('Successfully created') || aiContent.includes('task')) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }
+      
     } catch (error) {
       console.error('AI processing error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -138,7 +154,12 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
   };
 
   const TaskCard = ({ task }: { task: Task }) => (
-    <Card className={`transition-all hover:shadow-md ${task.completed ? 'opacity-60' : ''}`}>
+    <Card className={`
+      transition-all duration-300 ease-in-out hover:shadow-lg hover:scale-[1.02] 
+      ${task.completed ? 'opacity-60 bg-gray-50' : 'bg-white'} 
+      ${task.dueAt && isPast(new Date(task.dueAt)) && !task.completed ? 'border-red-200 bg-red-50' : ''}
+      ${task.dueAt && isToday(new Date(task.dueAt)) && !task.completed ? 'border-orange-200 bg-orange-50' : ''}
+    `}>
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
           <Checkbox
@@ -146,10 +167,12 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
             onCheckedChange={(checked) => 
               startTransition(() => toggleTask(task.id, !!checked))
             }
-            className="mt-1"
+            className="mt-1 transition-all duration-200"
           />
           <div className="flex-1 min-w-0">
-            <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-muted-foreground' : ''}`}>
+            <h3 className={`font-medium text-sm transition-all duration-200 ${
+              task.completed ? 'line-through text-muted-foreground' : ''
+            }`}>
               {task.name}
             </h3>
             {task.description && (
@@ -158,7 +181,7 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
               </p>
             )}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <Badge variant="outline" className={getPriorityColor(task.priority)}>
+              <Badge variant="outline" className={`transition-colors ${getPriorityColor(task.priority)}`}>
                 {task.priority}
               </Badge>
               {task.project && (
@@ -167,7 +190,13 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
                 </Badge>
               )}
               {task.dueAt && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className={`flex items-center gap-1 text-xs ${
+                  isPast(new Date(task.dueAt)) && !task.completed 
+                    ? 'text-red-600 font-medium' 
+                    : isToday(new Date(task.dueAt)) && !task.completed
+                    ? 'text-orange-600 font-medium'
+                    : 'text-muted-foreground'
+                }`}>
                   <Clock className="h-3 w-3" />
                   {format(new Date(task.dueAt), 'MMM d, h:mm a')}
                 </div>
@@ -178,7 +207,7 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
             variant="ghost"
             size="sm"
             onClick={() => startTransition(() => deleteTask(task.id))}
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-100 hover:text-red-600"
           >
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -187,15 +216,42 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
     </Card>
   );
 
-  const TaskSection = ({ title, tasks, color }: { title: string; tasks: Task[]; color: string }) => (
-    <div className="space-y-3">
-      <h2 className={`text-lg font-semibold flex items-center gap-2 ${color}`}>
-        <Calendar className="h-5 w-5" />
-        {title} ({tasks.length})
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+  const TaskSection = ({ title, tasks, color, icon }: { 
+    title: string; 
+    tasks: Task[]; 
+    color: string;
+    icon?: React.ReactNode;
+  }) => (
+    <div className="space-y-4 group">
+      <div className={`
+        flex items-center justify-between p-4 rounded-lg border-l-4 
+        ${title === 'Overdue' ? 'border-red-500 bg-red-50' :
+          title === 'Due Today' ? 'border-orange-500 bg-orange-50' :
+          title === 'Due Tomorrow' ? 'border-blue-500 bg-blue-50' :
+          title === 'Upcoming' ? 'border-gray-500 bg-gray-50' :
+          'border-green-500 bg-green-50'}
+        transition-all duration-200 hover:shadow-sm
+      `}>
+        <h2 className={`text-lg font-semibold flex items-center gap-2 ${color}`}>
+          {icon || <Calendar className="h-5 w-5" />}
+          {title}
+        </h2>
+        <Badge variant="outline" className={`${color.replace('text-', 'text-')} border-current`}>
+          {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+        </Badge>
+      </div>
+      
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 transition-all duration-300">
+        {tasks.map((task, index) => (
+          <div 
+            key={task.id} 
+            className="animate-in slide-in-from-bottom-2 fade-in-0"
+            style={{ animationDelay: `${index * 50}ms` }}
+          >
+            <div className="group">
+              <TaskCard task={task} />
+            </div>
+          </div>
         ))}
       </div>
     </div>
@@ -291,23 +347,48 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
       {/* Task Sections */}
       <div className="space-y-8">
         {dueTasks.length > 0 && (
-          <TaskSection title="Overdue" tasks={dueTasks} color="text-red-600" />
+          <TaskSection 
+            title="Overdue" 
+            tasks={dueTasks} 
+            color="text-red-600" 
+            icon={<AlertTriangle className="h-5 w-5" />}
+          />
         )}
         
         {todayTasks.length > 0 && (
-          <TaskSection title="Due Today" tasks={todayTasks} color="text-orange-600" />
+          <TaskSection 
+            title="Due Today" 
+            tasks={todayTasks} 
+            color="text-orange-600" 
+            icon={<Target className="h-5 w-5" />}
+          />
         )}
         
         {tomorrowTasks.length > 0 && (
-          <TaskSection title="Due Tomorrow" tasks={tomorrowTasks} color="text-blue-600" />
+          <TaskSection 
+            title="Due Tomorrow" 
+            tasks={tomorrowTasks} 
+            color="text-blue-600"
+            icon={<Calendar className="h-5 w-5" />}
+          />
         )}
         
         {upcomingTasks.length > 0 && (
-          <TaskSection title="Upcoming" tasks={upcomingTasks} color="text-gray-600" />
+          <TaskSection 
+            title="Upcoming" 
+            tasks={upcomingTasks} 
+            color="text-gray-600"
+            icon={<Clock className="h-5 w-5" />}
+          />
         )}
         
         {completedTasks.length > 0 && (
-          <TaskSection title="Completed" tasks={completedTasks} color="text-green-600" />
+          <TaskSection 
+            title="Completed" 
+            tasks={completedTasks} 
+            color="text-green-600"
+            icon={<CheckCircle className="h-5 w-5" />}
+          />
         )}
       </div>
 

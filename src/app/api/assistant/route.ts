@@ -62,6 +62,32 @@ const FUNCTIONS: OpenAI.Chat.ChatCompletionCreateParams.Function[] = [
     }
   },
   {
+    name: 'create_multiple_tasks',
+    description: 'Create multiple tasks at once for the user',
+    parameters: {
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Task name' },
+              description: { type: 'string', description: 'Task description' },
+              projectId: { type: 'string', description: 'Project ID to associate with' },
+              priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
+              dueAt: { type: 'string', description: 'Due date in ISO format' },
+              aiInstructions: { type: 'string', description: 'AI-specific instructions for the task' }
+            },
+            required: ['name', 'description', 'dueAt']
+          },
+          description: 'Array of tasks to create'
+        }
+      },
+      required: ['tasks']
+    }
+  },
+  {
     name: 'create_project',
     description: 'Create a new project',
     parameters: {
@@ -122,6 +148,8 @@ async function callTool(fn: string, args: any, userId: string) {
       return await getTeams(userId, args);
     case 'create_task':
       return await createTask(userId, args);
+    case 'create_multiple_tasks':
+      return await createMultipleTasks(userId, args);
     case 'create_project':
       return await createProject(userId, args);
     case 'suggest_task_improvements':
@@ -255,6 +283,68 @@ async function createTask(userId: string, args: any) {
   return {
     task,
     message: `Successfully created task "${task.name}" ${task.project ? `in project "${task.project.name}"` : ''}`
+  };
+}
+
+async function createMultipleTasks(userId: string, args: any) {
+  const { tasks } = args;
+  
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    throw new Error('Tasks array is required and must not be empty');
+  }
+
+  const createdTasks = [];
+  const errors = [];
+
+  for (const taskData of tasks) {
+    try {
+      const task = await prisma.task.create({
+        data: {
+          name: taskData.name,
+          description: taskData.description,
+          userId,
+          projectId: taskData.projectId || null,
+          priority: taskData.priority || 'MEDIUM',
+          startsAt: new Date(),
+          dueAt: new Date(taskData.dueAt),
+          aiInstructions: taskData.aiInstructions || null
+        },
+        include: {
+          project: { select: { id: true, name: true } }
+        }
+      });
+      createdTasks.push(task);
+    } catch (error) {
+      errors.push({
+        taskName: taskData.name,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  const successCount = createdTasks.length;
+  const errorCount = errors.length;
+  
+  let message = `Successfully created ${successCount} task${successCount !== 1 ? 's' : ''}`;
+  
+  if (createdTasks.length > 0) {
+    const taskList = createdTasks.map(task => 
+      `• ${task.name} ${task.project ? `(${task.project.name})` : ''}`
+    ).join('\n');
+    message += `:\n${taskList}`;
+  }
+  
+  if (errors.length > 0) {
+    message += `\n\nErrors (${errorCount}):\n`;
+    message += errors.map(err => `• ${err.taskName}: ${err.error}`).join('\n');
+  }
+
+  return {
+    tasks: createdTasks,
+    errors,
+    successCount,
+    errorCount,
+    message
   };
 }
 
@@ -443,8 +533,24 @@ export async function GET(req: NextRequest) {
   // 4️⃣  Read the prompt
   const prompt = req.nextUrl.searchParams.get('q') ?? 'Hello! How can I help you manage your tasks and projects today?';
 
+  // 5️⃣  Get current date information for context
+  const currentDate = new Date();
+  const dateOptions: Intl.DateTimeFormatOptions = { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    timeZone: 'America/New_York' 
+  };
+  const formattedDate = currentDate.toLocaleDateString('en-US', dateOptions);
+  const timeStr = currentDate.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    timeZone: 'America/New_York'
+  });
+
   try {
-    // 5️⃣  First completion with tool defs
+    // 6️⃣  First completion with tool defs
     const completion = await openai.chat.completions.create({
       model: dbUser?.openAIModel || 'gpt-4o-mini',
       messages: [
@@ -453,9 +559,23 @@ export async function GET(req: NextRequest) {
           content: `You are a productivity AI assistant that helps users manage their tasks, projects, and teams. 
           You have access to their database and can:
           - View and analyze tasks, projects, and team data
-          - Create new tasks and projects
+          - Create single tasks using create_task or multiple tasks at once using create_multiple_tasks
+          - Create new projects
           - Provide insights and suggestions based on AI instructions and project context
           - Offer productivity tips and project management advice
+          
+          CURRENT DATE AND TIME: ${formattedDate} at ${timeStr}
+          
+          When users request multiple tasks (e.g., "Create tasks for my morning routine", "Break down this project into tasks", "Create a weekly agenda"), 
+          use the create_multiple_tasks function instead of create_task to handle them efficiently.
+          
+          For due dates, parse natural language using the current date as reference:
+          - "today" = ${formattedDate}
+          - "tomorrow" = the day after today
+          - "Wednesday" = the next Wednesday (if today is Wednesday, use next Wednesday)
+          - "next Friday" = the Friday of next week
+          - "in 2 weeks" = 2 weeks from today
+          - If no date specified, set to end of today
           
           Be helpful, concise, and actionable in your responses. When suggesting improvements, be specific and practical.`
         },
@@ -543,14 +663,44 @@ export async function POST(req: NextRequest) {
   });
 
   try {
+    // Get current date information for context
+    const currentDate = new Date();
+    const dateOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      timeZone: 'America/New_York' 
+    };
+    const formattedDate = currentDate.toLocaleDateString('en-US', dateOptions);
+    const timeStr = currentDate.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'America/New_York'
+    });
+
     const systemMessage = {
       role: 'system' as const,
       content: `You are a productivity AI assistant that helps users manage their tasks, projects, and teams. 
       You have access to their database and can:
       - View and analyze tasks, projects, and team data
-      - Create new tasks and projects
+      - Create single tasks using create_task or multiple tasks at once using create_multiple_tasks
+      - Create new projects
       - Provide insights and suggestions based on AI instructions and project context
       - Offer productivity tips and project management advice
+      
+      CURRENT DATE AND TIME: ${formattedDate} at ${timeStr}
+      
+      When users request multiple tasks (e.g., "Create tasks for my morning routine", "Break down this project into tasks", "Create a weekly agenda"), 
+      use the create_multiple_tasks function instead of create_task to handle them efficiently.
+      
+      For due dates, parse natural language using the current date as reference:
+      - "today" = ${formattedDate}
+      - "tomorrow" = the day after today
+      - "Wednesday" = the next Wednesday (if today is Wednesday, use next Wednesday)
+      - "next Friday" = the Friday of next week
+      - "in 2 weeks" = 2 weeks from today
+      - If no date specified, set to end of today
       
       Be helpful, concise, and actionable in your responses. When suggesting improvements, be specific and practical.`
     };
