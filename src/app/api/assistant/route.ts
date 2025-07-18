@@ -522,7 +522,10 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { messages, prompt } = body;
+  const { messages = [], prompt } = body;
+
+  // Ensure messages is an array
+  const conversationMessages = Array.isArray(messages) ? messages : [];
 
   const dbUser = await prisma.user.findUnique({
     where: { id: userId },
@@ -554,7 +557,7 @@ export async function POST(req: NextRequest) {
 
     const completion = await openai.chat.completions.create({
       model: dbUser?.openAIModel || 'gpt-4o-mini',
-      messages: [systemMessage, ...messages, { role: 'user', content: prompt }],
+      messages: [systemMessage, ...conversationMessages, { role: 'user', content: prompt }],
       functions: FUNCTIONS,
       function_call: 'auto',
     });

@@ -167,10 +167,10 @@ export function CampaignDetailsDialog({
                 onClick={handleSyncFromSmartlead}
                 disabled={syncing}
                 size="sm"
-                className="gap-2"
+                className="gap-2 min-w-[100px]"
               >
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Sync Now'}
+                <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
               </Button>
             </div>
           )}

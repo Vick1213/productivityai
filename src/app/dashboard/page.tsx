@@ -2,38 +2,44 @@
 import prisma from '@/lib/prisma';
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { TaskPanel } from '@/components/dashboard/task-panel';
-import { ProjectPanel } from '@/components/dashboard/project-panel';
+import { SimplifiedTaskPanel } from '@/components/dashboard/simplified-task-panel';
 
 export default async function DashboardPage() {
   const { userId } = await auth();
   if (!userId) redirect('/sign-in');
 
+  // Get tasks with project information
   const tasks = await prisma.task.findMany({
     where: { userId },
-    orderBy: { createdAt: 'desc' },
-  });
-
-
-const projects = await prisma.project.findMany({
-    where: { users: { some: { id: userId } } },
-    include: { 
-      tasks: {
+    include: {
+      project: {
         select: {
           id: true,
           name: true,
-          completed: true,
-          priority: true,
-          dueAt: true,
         }
       }
     },
+    orderBy: { dueAt: 'asc' },
   });
 
+  // Get projects for task creation
+  const projects = await prisma.project.findMany({
+    where: { users: { some: { id: userId } } },
+    select: {
+      id: true,
+      name: true,
+    }
+  });
+
+  // Map tasks so that project is undefined instead of null
+  const mappedTasks = tasks.map(task => ({
+    ...task,
+    project: task.project === null ? undefined : task.project,
+  }));
+
   return (
-    <div className="space-y-8">
-      <TaskPanel tasks={tasks} />
-      <ProjectPanel projects={projects} />
+    <div className="min-h-screen bg-gray-50">
+      <SimplifiedTaskPanel tasks={mappedTasks} projects={projects} />
     </div>
   );
 }

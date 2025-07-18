@@ -5,12 +5,6 @@ import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
 import { Priority } from '@prisma/client';
 
-function toDate(date?: string | null, time?: string | null): Date {
-  const d = date?.trim() || new Date().toISOString().split('T')[0];
-  const t = time?.trim() || '00:00';
-  return new Date(`${d}T${t}:00`);
-}
-
 export async function addTask(form: FormData) {
   const { userId: currentUser } = await auth();
   if (!currentUser) throw new Error('Unauthenticated');
@@ -18,26 +12,30 @@ export async function addTask(form: FormData) {
   const name = (form.get('name') as string)?.trim();
   if (!name) return;
 
-  /* ----- optional fields from the drawer ----- */
-  const projectId  = form.get('projectId')?.toString() || null;
+  // Optional fields from the simplified form
+  const projectId = form.get('projectId')?.toString() || null;
   const assigneeId = form.get('userId')?.toString() || currentUser;
 
   const description = (form.get('description') as string) ?? '';
-  const priority    =
-    (form.get('priority')?.toString().toUpperCase() as Priority) ??
-    Priority.LOW;
+  const priority = (form.get('priority')?.toString().toUpperCase() as Priority) ?? Priority.MEDIUM;
 
-  // fallback to "now" if drawer didn’t send date/time
-  const startsAt = toDate(
-    form.get('date')?.toString(),
-    form.get('time')?.toString()
-  );
+  // Handle due date and time
+  const dueDate = form.get('dueDate')?.toString();
+  const dueTime = form.get('dueTime')?.toString();
+  
+  let dueAt: Date;
+  if (dueDate) {
+    const timeStr = dueTime || '23:59'; // Default to end of day if no time specified
+    dueAt = new Date(`${dueDate}T${timeStr}:00`);
+  } else {
+    // Default to end of today if no due date specified
+    const today = new Date();
+    today.setHours(23, 59, 0, 0);
+    dueAt = today;
+  }
 
-  // if no due date chosen, use the same timestamp
-  const dueAt = toDate(
-    form.get('dueDate')?.toString(),
-    form.get('dueTime')?.toString()
-  ) || startsAt;
+  // Default start time to now
+  const startsAt = new Date();
 
   await prisma.task.create({
     data: {
@@ -45,7 +43,7 @@ export async function addTask(form: FormData) {
       description,
       priority,
       startsAt,
-      dueAt,          // ✅ always defined
+      dueAt,
       projectId,
       userId: assigneeId,
     },
@@ -54,9 +52,6 @@ export async function addTask(form: FormData) {
   if (projectId) revalidatePath(`/dashboard/projects/${projectId}`);
   else revalidatePath('/dashboard');
 }
-
-
-/* toggleTask & deleteTask stay unchanged */
 
 export async function toggleTask(id: string, completed: boolean) {
   const { userId } = await auth();
