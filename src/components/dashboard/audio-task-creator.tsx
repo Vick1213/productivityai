@@ -58,28 +58,38 @@ export function AudioTaskCreator({ onTranscription }: AudioTaskCreatorProps) {
     setIsProcessing(true);
     
     try {
-      // For now, we'll simulate speech-to-text processing
-      // In a real implementation, you would send this to a speech-to-text service
-      // like OpenAI Whisper, Google Speech-to-Text, or Azure Speech Services
+      // Create FormData to send audio file to our API
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.wav');
       
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Send to our speech-to-text API endpoint
+      const response = await fetch('/api/speech-to-text', {
+        method: 'POST',
+        body: formData,
+      });
       
-      // Mock transcription result
-      const mockTranscriptions = [
-        "Create a task to review the quarterly reports by Friday",
-        "Schedule a meeting with the design team next Tuesday",
-        "Remind me to call the client about the project update",
-        "Add a high priority task to finish the presentation slides",
-        "Create a task to prepare for the team standup tomorrow"
-      ];
+      const data = await response.json();
       
-      const randomTranscription = mockTranscriptions[Math.floor(Math.random() * mockTranscriptions.length)];
-      onTranscription(randomTranscription);
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to process audio');
+      }
+      
+      if (data.transcription) {
+        onTranscription(data.transcription);
+      } else {
+        throw new Error('No transcription received');
+      }
       
     } catch (error) {
       console.error('Error processing audio:', error);
-      onTranscription("Sorry, I couldn't process the audio. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      // Check if it's an API key error and provide helpful guidance
+      if (errorMessage.includes('OpenAI') && errorMessage.includes('key')) {
+        onTranscription(`⚠️ ${errorMessage} You can add your OpenAI API key in Settings to enable voice tasks.`);
+      } else {
+        onTranscription(`❌ Speech processing failed: ${errorMessage}`);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -93,10 +103,10 @@ export function AudioTaskCreator({ onTranscription }: AudioTaskCreatorProps) {
             <h3 className="font-medium text-purple-900 mb-1">Voice Task Creator</h3>
             <p className="text-sm text-purple-700">
               {isRecording 
-                ? "Recording... Speak your task details" 
+                ? "🎙️ Recording... Speak clearly about your task" 
                 : isProcessing 
-                ? "Processing your audio..." 
-                : "Click the microphone to create a task with your voice"
+                ? "🔄 Converting speech to text..." 
+                : "🎯 Record your voice to create a task instantly"
               }
             </p>
           </div>

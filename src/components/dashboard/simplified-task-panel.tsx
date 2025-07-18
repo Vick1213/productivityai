@@ -91,10 +91,26 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
     }
   };
 
-  const handleAudioTranscription = (transcription: string) => {
+  const handleAudioTranscription = async (transcription: string) => {
+    // Set the AI message and show the chat panel
     setAiMessage(transcription);
     setShowAIChat(true);
     setShowAudioCreator(false);
+    
+    // Automatically send the transcription to AI for task creation
+    try {
+      const response = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: `Please create a task based on this voice input: "${transcription}"` }),
+      });
+      
+      const data = await response.json();
+      setAiResponse(data.response || 'Task creation request processed.');
+    } catch (error) {
+      console.error('AI processing error:', error);
+      setAiResponse('Voice transcribed successfully. Please review and send to create the task.');
+    }
   };
 
   const TaskCard = ({ task }: { task: Task }) => (
