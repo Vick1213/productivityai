@@ -14,14 +14,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a SmartLeads project' }, { status: 400 });
 
   const sl = new SmartleadClient(project.integrationAccount.apiKey);
-  const stats = await sl.fetchCampaignAnalytics(project.smartleadCampaignId); // you’ll add this
+  const stats = await sl.fetchCampaignAnalytics(project.smartleadCampaignId);
 
-  /* sample mapping – adjust to your Goal names */
+  /* Map the SmartLead stats to Goal names and values */
   const toUpdate = [
     { name: 'Emails Sent', value: stats.sent },
-    { name: 'replies %', value: stats.replies },
+    { name: 'Opens Count', value: stats.opens },
+    { name: 'Replies Count', value: stats.replies },
     { name: 'Positive Replies', value: stats.positives },
-    { name: 'Total', value: stats.openRate },
+    { name: 'Open Rate', value: stats.openRate },
+    { name: 'Reply Rate', value: stats.replyRate },
+    { name: 'Positive Rate', value: stats.positivePct },
   ];
 
   for (const g of toUpdate) {

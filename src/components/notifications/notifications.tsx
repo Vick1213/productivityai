@@ -56,10 +56,61 @@ export function useNotifications() {
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [shownNotifications, setShownNotifications] = useState<Map<string, Date>>(new Map());
+  const [lastFetchTime, setLastFetchTime] = useState<Date>(new Date());
   const { userId } = useAuth();
 
+  // Load shown notifications from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && userId) {
+      const stored = localStorage.getItem(`notifications-shown-${userId}`);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const map = new Map<string, Date>();
+          Object.entries(parsed).forEach(([key, value]) => {
+            map.set(key, new Date(value as string));
+          });
+          setShownNotifications(map);
+        } catch (error) {
+          console.error('Failed to parse stored notifications:', error);
+        }
+      }
+    }
+  }, [userId]);
+
+  // Save shown notifications to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && userId && shownNotifications.size > 0) {
+      const obj: Record<string, string> = {};
+      shownNotifications.forEach((date, key) => {
+        obj[key] = date.toISOString();
+      });
+      localStorage.setItem(`notifications-shown-${userId}`, JSON.stringify(obj));
+    }
+  }, [shownNotifications, userId]);
+
   const addNotification = useCallback((notification: Notification) => {
-    setNotifications((prev) => [notification, ...prev]);
+    // Use the notification ID as the rate limiting key
+    const baseId = notification.id;
+    const now = new Date();
+    
+    // Rate limiting: don't show the same notification more than once per 5 minutes
+    const lastShown = shownNotifications.get(baseId);
+    if (lastShown && (now.getTime() - lastShown.getTime()) < 5 * 60 * 1000) {
+      return; // Skip this notification
+    }
+    
+    // Check if notification with same ID already exists in current notifications
+    setNotifications((prev) => {
+      if (prev.some(n => n.id === notification.id)) {
+        return prev; // Don't add exact duplicate
+      }
+      return [notification, ...prev];
+    });
+    
+    // Mark as shown with current timestamp
+    setShownNotifications(prev => new Map(prev).set(baseId, now));
     
     // Auto-dismiss after different times based on type
     const dismissTime = notification.type === "task" && notification.category === "overdue" 
@@ -69,14 +120,46 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setTimeout(() => {
       dismissNotification(notification.id);
     }, dismissTime);
-  }, []);
+  }, [shownNotifications]);
 
   const dismissNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+    // Keep the notification in shownNotifications to prevent it from reappearing
   };
 
   // Use SSE stream for real-time notifications
   const { isConnected } = useNotificationStream(addNotification);
+
+  // Clean up old shown notifications every hour to prevent memory bloat
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      // Clear notifications that are more than 24 hours old based on timestamp
+      setShownNotifications(prev => {
+        const yesterday = Date.now() - 24 * 60 * 60 * 1000;
+        const newMap = new Map<string, Date>();
+        
+        // Only keep notifications from the last 24 hours
+        prev.forEach((timestamp, id) => {
+          if (timestamp.getTime() > yesterday) {
+            newMap.set(id, timestamp);
+          }
+        });
+        
+        // Persist the cleaned data immediately
+        if (typeof window !== 'undefined' && userId && newMap.size !== prev.size) {
+          const obj: Record<string, string> = {};
+          newMap.forEach((date, key) => {
+            obj[key] = date.toISOString();
+          });
+          localStorage.setItem(`notifications-shown-${userId}`, JSON.stringify(obj));
+        }
+        
+        return newMap;
+      });
+    }, 60 * 60 * 1000); // Clean up every hour
+
+    return () => clearInterval(cleanup);
+  }, [userId]);
 
   // Fallback: periodically check for notifications if SSE is not connected
   useEffect(() => {
@@ -84,6 +167,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     const checkForNotifications = async () => {
       try {
+        const currentTime = new Date();
+        const sinceParam = lastFetchTime.toISOString();
+        
         // Check for chat notifications
         const chatResponse = await fetch("/api/notifications/chat");
         if (chatResponse.ok) {
@@ -120,8 +206,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           });
         }
 
-        // Check for task notifications
-        const taskResponse = await fetch("/api/notifications/tasks");
+        // Check for task notifications with timestamp filtering
+        const taskResponse = await fetch(`/api/notifications/tasks?since=${encodeURIComponent(sinceParam)}`);
         if (taskResponse.ok) {
           const taskData = await taskResponse.json();
           
@@ -173,6 +259,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             addNotification(notification);
           });
         }
+        
+        // Update the last fetch time
+        setLastFetchTime(currentTime);
       } catch (error) {
         console.error("Failed to check for notifications:", error);
       }

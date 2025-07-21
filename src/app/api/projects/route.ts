@@ -45,6 +45,12 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
           }
+        },
+        integrationAccount: {
+          select: {
+            externalId: true,
+            provider: true
+          }
         }
       },
       orderBy: {

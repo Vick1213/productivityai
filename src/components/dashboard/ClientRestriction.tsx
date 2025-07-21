@@ -28,6 +28,7 @@ export function ClientRestriction({ children }: ClientRestrictionProps) {
               '/dashboad/campaignreports',
               '/dashboard/ai',
               '/dashboard/analytics',
+              '/dashboard/campaign-analytics',
               '/dashboard/settings',
               '/dashboard/team'
             ];

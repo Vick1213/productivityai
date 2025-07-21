@@ -165,8 +165,47 @@ const FUNCTIONS: OpenAI.Chat.ChatCompletionCreateParams.Function[] = [
   }
 ];
 
+// Helper function to detect when we should force function calls
+function detectRequiredFunction(prompt: string): string | undefined {
+  const lowerPrompt = prompt.toLowerCase();
+  
+  // Force project creation with tasks
+  if ((lowerPrompt.includes('create') || lowerPrompt.includes('make') || lowerPrompt.includes('add')) &&
+      lowerPrompt.includes('project') && 
+      (lowerPrompt.includes('task') || lowerPrompt.includes('todo'))) {
+    return 'create_project_with_tasks';
+  }
+  
+  // Force multiple task creation
+  if ((lowerPrompt.includes('create') || lowerPrompt.includes('make') || lowerPrompt.includes('add')) &&
+      (lowerPrompt.includes('tasks') || lowerPrompt.includes('multiple') || 
+       lowerPrompt.includes('several') || lowerPrompt.includes('list'))) {
+    return 'create_multiple_tasks';
+  }
+  
+  // Force single task creation
+  if ((lowerPrompt.includes('create') || lowerPrompt.includes('make') || lowerPrompt.includes('add')) &&
+      lowerPrompt.includes('task') && !lowerPrompt.includes('tasks')) {
+    return 'create_task';
+  }
+  
+  // Force schedule context when planning or scheduling
+  if (lowerPrompt.includes('schedule') || lowerPrompt.includes('plan') || 
+      lowerPrompt.includes('organize') || lowerPrompt.includes('workload')) {
+    return 'get_user_schedule_context';
+  }
+  
+  return undefined;
+}
+
 // Router to call our tools
 async function callTool(fn: string, args: any, userId: string) {
+  console.log('🔧 callTool invoked:', {
+    function: fn,
+    userId,
+    args: JSON.stringify(args, null, 2)
+  });
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -177,31 +216,76 @@ async function callTool(fn: string, args: any, userId: string) {
     }
   });
 
-  if (!user) throw new Error('User not found');
+  if (!user) {
+    console.error('❌ User not found:', userId);
+    throw new Error('User not found');
+  }
 
-  switch (fn) {
-    case 'get_tasks':
-      return await getTasks(userId, args);
-    case 'get_projects':
-      return await getProjects(userId, args);
-    case 'get_teams':
-      return await getTeams(userId, args);
-    case 'create_task':
-      return await createTask(userId, args);
-    case 'create_multiple_tasks':
-      return await createMultipleTasks(userId, args);
-    case 'create_project':
-      return await createProject(userId, args);
-    case 'suggest_task_improvements':
-      return await suggestTaskImprovements(userId, args);
-    case 'get_user_schedule_context':
-      return await getUserScheduleContext(userId, args);
-    case 'get_project_analytics':
-      return await getProjectAnalytics(userId, args);
-    case 'create_project_with_tasks':
-      return await createProjectWithTasks(userId, args);
-    default:
-      throw new Error(`Unknown function: ${fn}`);
+  console.log('👤 User context:', {
+    id: user.id,
+    primaryOrgId: user.primaryOrgId,
+    orgCount: user.orgMemberships.length
+  });
+
+  try {
+    let result;
+    switch (fn) {
+      case 'get_tasks':
+        console.log('📝 Executing getTasks...');
+        result = await getTasks(userId, args);
+        break;
+      case 'get_projects':
+        console.log('📋 Executing getProjects...');
+        result = await getProjects(userId, args);
+        break;
+      case 'get_teams':
+        console.log('👥 Executing getTeams...');
+        result = await getTeams(userId, args);
+        break;
+      case 'create_task':
+        console.log('📝 Executing createTask...');
+        result = await createTask(userId, args);
+        break;
+      case 'create_multiple_tasks':
+        console.log('📝 Executing createMultipleTasks...');
+        result = await createMultipleTasks(userId, args);
+        break;
+      case 'create_project':
+        console.log('📋 Executing createProject...');
+        result = await createProject(userId, args);
+        break;
+      case 'suggest_task_improvements':
+        console.log('💡 Executing suggestTaskImprovements...');
+        result = await suggestTaskImprovements(userId, args);
+        break;
+      case 'get_user_schedule_context':
+        console.log('📅 Executing getUserScheduleContext...');
+        result = await getUserScheduleContext(userId, args);
+        break;
+      case 'get_project_analytics':
+        console.log('📊 Executing getProjectAnalytics...');
+        result = await getProjectAnalytics(userId, args);
+        break;
+      case 'create_project_with_tasks':
+        console.log('📋📝 Executing createProjectWithTasks...');
+        result = await createProjectWithTasks(userId, args);
+        break;
+      default:
+        console.error('❌ Unknown function:', fn);
+        throw new Error(`Unknown function: ${fn}`);
+    }
+
+    console.log('✅ Tool execution successful:', {
+      function: fn,
+      resultKeys: Object.keys(result || {}),
+      hasMessage: !!(result && 'message' in result)
+    });
+
+    return result;
+  } catch (error) {
+    console.error(`💥 Tool execution failed for ${fn}:`, error);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+    throw error;
   }
 }
 
@@ -418,39 +502,79 @@ async function createProject(userId: string, args: any) {
 }
 
 async function createProjectWithTasks(userId: string, args: any) {
+  console.log('🔧 createProjectWithTasks called with:', {
+    userId,
+    args: JSON.stringify(args, null, 2)
+  });
+
   const { projectName, projectDescription, organizationId, projectDueAt, tasks } = args;
   
   if (!Array.isArray(tasks) || tasks.length === 0) {
+    console.error('❌ Tasks array validation failed:', { tasks });
     throw new Error('Tasks array is required and must not be empty');
   }
 
-  // First, create the project
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { primaryOrgId: true }
-  });
+  try {
+    // First, verify user exists and get org info
+    console.log('🔍 Looking up user:', userId);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { 
+        id: true,
+        primaryOrgId: true,
+        firstName: true,
+        lastName: true
+      }
+    });
 
-  const project = await prisma.project.create({
-    data: {
+    console.log('👤 User found:', user);
+    
+    if (!user) {
+      throw new Error(`User not found: ${userId}`);
+    }
+
+    // Create the project with detailed logging
+    const projectData = {
       name: projectName,
       description: projectDescription,
       organizationId: organizationId || user?.primaryOrgId || null,
       dueAt: projectDueAt ? new Date(projectDueAt) : null,
       users: { connect: { id: userId } }
-    },
-    include: {
-      organization: { select: { id: true, name: true } }
-    }
-  });
+    };
 
-  // Then, create all the tasks for this project
-  const createdTasks = [];
-  const errors = [];
+    console.log('📋 Creating project with data:', JSON.stringify(projectData, null, 2));
 
-  for (const taskData of tasks) {
-    try {
-      const task = await prisma.task.create({
-        data: {
+    const project = await prisma.project.create({
+      data: projectData,
+      include: {
+        organization: { select: { id: true, name: true } },
+        users: { select: { id: true, firstName: true, lastName: true } }
+      }
+    });
+
+    console.log('✅ Project created successfully:', {
+      id: project.id,
+      name: project.name,
+      organizationId: project.organizationId,
+      userCount: project.users.length
+    });
+
+    // Then, create all the tasks for this project
+    const createdTasks = [];
+    const errors = [];
+
+    console.log(`📝 Creating ${tasks.length} tasks for project ${project.id}...`);
+
+    for (let i = 0; i < tasks.length; i++) {
+      const taskData = tasks[i];
+      try {
+        console.log(`🔨 Creating task ${i + 1}/${tasks.length}:`, {
+          name: taskData.name,
+          dueAt: taskData.dueAt,
+          priority: taskData.priority
+        });
+
+        const taskCreateData = {
           name: taskData.name,
           description: taskData.description,
           userId,
@@ -459,47 +583,79 @@ async function createProjectWithTasks(userId: string, args: any) {
           startsAt: new Date(),
           dueAt: new Date(taskData.dueAt),
           aiInstructions: taskData.aiInstructions || null
-        }
-      });
-      createdTasks.push(task);
-    } catch (error) {
-      errors.push({
-        taskName: taskData.name,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+        };
+
+        console.log('📝 Task create data:', JSON.stringify(taskCreateData, null, 2));
+
+        const task = await prisma.task.create({
+          data: taskCreateData,
+          include: {
+            project: { select: { id: true, name: true } }
+          }
+        });
+
+        console.log('✅ Task created successfully:', {
+          id: task.id,
+          name: task.name,
+          projectId: task.projectId
+        });
+
+        createdTasks.push(task);
+      } catch (error) {
+        console.error(`❌ Error creating task ${i + 1}:`, error);
+        errors.push({
+          taskName: taskData.name,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
     }
-  }
 
-  const successCount = createdTasks.length;
-  const errorCount = errors.length;
-  
-  let message = `Successfully created project "${project.name}"`;
-  if (project.organization) {
-    message += ` in organization "${project.organization.name}"`;
-  }
-  message += ` with ${successCount} task${successCount !== 1 ? 's' : ''}`;
-  
-  if (createdTasks.length > 0) {
-    const taskList = createdTasks.map(task => 
-      `• ${task.name} (${task.priority} priority, due: ${new Date(task.dueAt).toLocaleDateString()})`
-    ).join('\n');
-    message += `:\n\n${taskList}`;
-  }
-  
-  if (errors.length > 0) {
-    message += `\n\nTask creation errors (${errorCount}):\n`;
-    message += errors.map(err => `• ${err.taskName}: ${err.error}`).join('\n');
-  }
+    const successCount = createdTasks.length;
+    const errorCount = errors.length;
+    
+    console.log('📊 Final results:', {
+      projectId: project.id,
+      successCount,
+      errorCount,
+      totalTasks: tasks.length
+    });
 
-  return {
-    project,
-    tasks: createdTasks,
-    errors,
-    successCount,
-    errorCount,
-    totalTasks: tasks.length,
-    message
-  };
+    let message = `Successfully created project "${project.name}"`;
+    if (project.organization) {
+      message += ` in organization "${project.organization.name}"`;
+    }
+    message += ` with ${successCount} task${successCount !== 1 ? 's' : ''}`;
+    
+    if (createdTasks.length > 0) {
+      const taskList = createdTasks.map(task => 
+        `• ${task.name} (${task.priority} priority, due: ${new Date(task.dueAt).toLocaleDateString()})`
+      ).join('\n');
+      message += `:\n\n${taskList}`;
+    }
+    
+    if (errors.length > 0) {
+      message += `\n\nTask creation errors (${errorCount}):\n`;
+      message += errors.map(err => `• ${err.taskName}: ${err.error}`).join('\n');
+    }
+
+    const result = {
+      project,
+      tasks: createdTasks,
+      errors,
+      successCount,
+      errorCount,
+      totalTasks: tasks.length,
+      message
+    };
+
+    console.log('🎯 Returning result:', JSON.stringify(result, null, 2));
+    return result;
+
+  } catch (error) {
+    console.error('💥 Fatal error in createProjectWithTasks:', error);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+    throw error;
+  }
 }
 
 async function getUserScheduleContext(userId: string, args: any) {
@@ -850,6 +1006,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // 6️⃣  First completion with tool defs
+    const forcedFunction = detectRequiredFunction(prompt);
     const completion = await openai.chat.completions.create({
       model: dbUser?.openAIModel || 'gpt-4o-mini',
       messages: [
@@ -903,7 +1060,7 @@ export async function GET(req: NextRequest) {
         { role: 'user', content: prompt }
       ],
       functions: FUNCTIONS,
-      function_call: 'auto',
+      function_call: forcedFunction ? { name: forcedFunction } : 'auto',
     });
 
     const [choice] = completion.choices;
@@ -1048,11 +1205,27 @@ export async function POST(req: NextRequest) {
       ALWAYS call the function to actually create what the user requests. Be helpful, concise, and actionable in your responses.`
     };
 
+    const forcedFunction = detectRequiredFunction(prompt);
+    
+    console.log('🤖 Starting AI assistant call with:', {
+      userId,
+      promptLength: prompt.length,
+      messageCount: conversationMessages.length,
+      forcedFunction,
+      currentDate: formattedDate
+    });
+
     const completion = await openai.chat.completions.create({
       model: dbUser?.openAIModel || 'gpt-4o-mini',
       messages: [systemMessage, ...conversationMessages, { role: 'user', content: prompt }],
       functions: FUNCTIONS,
-      function_call: 'auto',
+      function_call: forcedFunction ? { name: forcedFunction } : 'auto',
+    });
+
+    console.log('📤 OpenAI response:', {
+      finishReason: completion.choices[0].finish_reason,
+      hasFunctionCall: !!completion.choices[0].message.function_call,
+      functionName: completion.choices[0].message.function_call?.name
     });
 
     const [choice] = completion.choices;
@@ -1061,13 +1234,21 @@ export async function POST(req: NextRequest) {
       const { name, arguments: argStr } = choice.message.function_call;
       const args = JSON.parse(argStr ?? '{}');
 
+      console.log('🔧 Function call detected:', {
+        name,
+        args: JSON.stringify(args, null, 2)
+      });
+
       let toolResult;
       try {
         toolResult = await callTool(name, args, userId);
+        console.log('✅ Tool result:', JSON.stringify(toolResult, null, 2));
       } catch (err) {
+        console.error('💥 Tool execution error:', err);
         return NextResponse.json({ error: (err as Error).message }, { status: 400 });
       }
 
+      console.log('🔄 Generating follow-up response...');
       const followUp = await openai.chat.completions.create({
         model: dbUser?.openAIModel || 'gpt-4o-mini',
         messages: [
@@ -1079,9 +1260,11 @@ export async function POST(req: NextRequest) {
         ],
       });
 
+      console.log('✅ Follow-up response generated');
       return NextResponse.json(followUp.choices[0].message);
     }
 
+    console.log('💬 No function call, returning direct response');
     return NextResponse.json(choice.message);
   } catch (error: any) {
     console.error('OpenAI API error:', error);
