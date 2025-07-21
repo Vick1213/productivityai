@@ -336,14 +336,9 @@ export function EmailNotificationSettings() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <div className="space-y-2">
-            <p className="font-medium text-foreground">To enable email notifications:</p>
-            <ol className="list-decimal list-inside space-y-1 pl-4">
-              <li>Sign up for a <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Resend account</a></li>
-              <li>Get your API key from the Resend dashboard</li>
-              <li>Add <code className="px-2 py-1 bg-muted rounded">RESEND_API_KEY</code> to your environment variables</li>
-              <li>Optionally set <code className="px-2 py-1 bg-muted rounded">RESEND_FROM_EMAIL</code> for a custom sender address</li>
-              <li>Restart the application</li>
-            </ol>
+            <p className="font-medium text-foreground">
+              Make sure you are signed in and your admin has allowed you to use this service.
+            </p>
           </div>
           
           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
