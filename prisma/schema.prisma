@@ -8,6 +8,247 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// ─────────────────── chat models ───────────────────
+/// One thread (DM or small group) lives inside exactly one
+/// organisation and involves ≥ 2 users.
+model ChatThread {
+  id             String            @id @default(uuid())
+  organizationId String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  lastMessageAt  DateTime?
+  messages       ChatMessage[]
+  participants   ChatParticipant[]
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([lastMessageAt])
+}
+
+/// Join table: which users are in which thread.
+model ChatParticipant {
+  threadId String
+  userId   String
+  thread   ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([threadId, userId])
+}
+
+/// Every message belongs to a thread + author.
+model ChatMessage {
+  id        String      @id @default(uuid())
+  threadId  String
+  authorId  String
+  type      MessageType @default(TEXT)
+  body      String?
+  createdAt DateTime    @default(now())
+  author    User        @relation(fields: [authorId], references: [id])
+  thread    ChatThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+model Invite {
+  id             String       @id @default(uuid())
+  email          String
+  token          String       @unique
+  organizationId String
+  createdAt      DateTime     @default(now())
+  isClient       Boolean      @default(false)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+model IntegrationAccount {
+  id             String              @id @default(uuid())
+  provider       IntegrationProvider
+  externalId     String
+  apiKey         String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects       Project[]
+
+  @@unique([provider, externalId])
+  @@index([provider, externalId])
+}
+
+model Organization {
+  id                  String               @id @default(uuid())
+  name                String               @unique
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  chatThreads         ChatThread[]
+  integrationAccounts IntegrationAccount[]
+  invites             Invite[]
+  projects            Project[]
+  primaryUsers        User[]               @relation("PrimaryOrg")
+  users               UserOrganization[]
+}
+
+model Project {
+  id                   String              @id @default(uuid())
+  name                 String
+  description          String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  organizationId       String?
+  completed            Boolean             @default(false)
+  dueAt                DateTime?
+  integrationAccountId String?
+  smartleadCampaignId  String?             @unique
+  bookedMeetings       BookedMeeting[]
+  campaignReplies      CampaignReply[]
+  goals                Goal[]
+  integrationAccount   IntegrationAccount? @relation(fields: [integrationAccountId], references: [id], onDelete: Cascade)
+  organization         Organization?       @relation(fields: [organizationId], references: [id])
+  tasks                Task[]
+  users                User[]              @relation("UserProjects")
+
+  @@unique([organizationId, name])
+}
+
+model Goal {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  currentProgress Int      @default(0)
+  totalTarget     Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model UserOrganization {
+  userId       String
+  orgId        String
+  role         String?
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, orgId])
+}
+
+model User {
+  id               String             @id @default(uuid())
+  email            String             @unique
+  firstName        String
+  lastName         String
+  openAIKey        String?
+  openAIModel      String?            @default("gpt-3.5-turbo")
+  jobTitle         String?
+  role             String?
+  preferences      Json?
+  startTime        String?
+  endTime          String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  avatarUrl        String?
+  primaryOrgId     String?
+  isClient         Boolean            @default(false)
+  activityLogs     ActivityLog[]
+  chatMessages     ChatMessage[]
+  chatParticipants ChatParticipant[]
+  tasks            Task[]
+  primaryOrg       Organization?      @relation("PrimaryOrg", fields: [primaryOrgId], references: [id])
+  orgMemberships   UserOrganization[]
+  projects         Project[]          @relation("UserProjects")
+}
+
+model Tag {
+  id    String @id @default(uuid())
+  name  String @unique
+  tasks Task[] @relation("TaskTags")
+}
+
+model Task {
+  id             String        @id @default(uuid())
+  name           String
+  description    String
+  notes          String?
+  aiInstructions String?
+  priority       Priority      @default(LOW)
+  startsAt       DateTime
+  dueAt          DateTime
+  completed      Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  userId         String
+  projectId      String?
+  activityLogs   ActivityLog[]
+  subtasks       SubTask[]
+  project        Project?      @relation(fields: [projectId], references: [id])
+  user           User          @relation(fields: [userId], references: [id])
+  tags           Tag[]         @relation("TaskTags")
+
+  @@unique([projectId, name])
+  @@index([dueAt])
+  @@index([userId])
+}
+
+model SubTask {
+  id         String   @id @default(uuid())
+  name       String
+  completed  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  taskId     String
+  parentTask Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  message   String
+  createdAt DateTime @default(now())
+  taskId    String
+  userId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+  @@index([userId])
+}
+
+model CampaignReply {
+  id            String         @id @default(uuid())
+  leadName      String
+  leadEmail     String
+  status        LeadStatus
+  replyContent  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  projectId     String
+  replyTime     DateTime?
+  statsId       String?
+  bookedMeeting BookedMeeting?
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, leadEmail])
+  @@index([projectId])
+  @@index([leadEmail])
+}
+
+model BookedMeeting {
+  id          String        @id @default(uuid())
+  meetingDate DateTime?
+  meetingTime String?
+  meetingLink String?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  projectId   String
+  replyId     String        @unique
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reply       CampaignReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([meetingDate])
+}
 
 enum Priority {
   LOW
@@ -25,293 +266,13 @@ enum LeadStatus {
 
 /// ─────────────────── chat enums ───────────────────
 enum MessageType {
-  TEXT   /// plain text
-  PING   /// 🔔 nudge
-  // FILE, REACTION … add more later
+  /// plain text
+  TEXT
+  /// 🔔 nudge
+  PING
 }
 
-/// ─────────────────── chat models ───────────────────
-/// One thread (DM or small group) lives inside exactly one
-/// organisation and involves ≥ 2 users.
-model ChatThread {
-  id             String           @id @default(uuid())
-  organization   Organization     @relation(fields: [organizationId], references: [id])
-  organizationId String
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-
-  // Denormalised pointer to the latest activity for sorting
-  lastMessageAt  DateTime?
-
-  participants   ChatParticipant[]
-  messages       ChatMessage[]
-
-  @@index([organizationId])
-  @@index([lastMessageAt])
-}
-
-/// Join table: which users are in which thread.
-model ChatParticipant {
-  thread   ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  threadId String
-  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId   String
-
-  @@id([threadId, userId])
-}
-
-/// Every message belongs to a thread + author.
-model ChatMessage {
-  id        String      @id @default(uuid())
-  thread    ChatThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  threadId  String
-  author    User        @relation(fields: [authorId], references: [id])
-  authorId  String
-
-  type      MessageType @default(TEXT)
-  body      String?     // null for non-text payloads
-  createdAt DateTime    @default(now())
-
-  @@index([threadId, createdAt])
-}
-
-model Invite {
-  id             String   @id @default(uuid())
-  email          String
-  token          String   @unique
-  organization   Organization @relation(fields:[organizationId], references:[id])
-  organizationId String
-  isClient       Boolean  @default(false)
-  createdAt      DateTime @default(now())
-}
 enum IntegrationProvider {
-  SMARTLEADS   /// Smartlead clientId / campaignId
-  // ADD MORE LATER (eg. HUBSPOT, SALESFORCE, …)
-}
-
-model IntegrationAccount {
-  id             String              @id @default(uuid())
-  provider       IntegrationProvider
-  externalId     String              // Smartlead **clientId**
-  apiKey         String?             // store token/secret if needed
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-
-  /// FK → Organisation that owns the account
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId String
-
-  /// A Smartlead client can own many campaigns ⇒ many projects
-  projects       Project[]
-
-  @@index([provider, externalId])
-  @@unique([provider, externalId])   // never duplicate the same external account
-}
-
-model Organization {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  /* many-to-many members via join table */
-  users           UserOrganization[]
-
-  primaryUsers    User[] @relation("PrimaryOrg")
-  
-  integrationAccounts IntegrationAccount[]
-
-
-  invites         Invite[]
-  chatThreads     ChatThread[]
-  projects        Project[]
-}
-
-model Project {
-  id              String   @id @default(uuid())
-  name            String
-  description     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  organization    Organization? @relation(fields: [organizationId], references: [id])
-  organizationId  String?
-
-  // Smartlead integration
-  smartleadCampaignId  String?  @unique
-  integrationAccountId String?             // FK
-  integrationAccount   IntegrationAccount? @relation(fields: [integrationAccountId], references: [id], onDelete: Cascade)
-
-  dueAt          DateTime?
-  completed      Boolean  @default(false)
-  users          User[]   @relation("UserProjects")
-  tasks          Task[]
-  goals          Goal[]
-  campaignReplies CampaignReply[]
-  bookedMeetings  BookedMeeting[]
-
-  @@unique([organizationId, name])
-}
-
-model Goal {
-  id             String   @id @default(uuid())
-  name           String
-  description    String?
-  currentProgress Int     @default(0)
-  totalTarget    Int
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId      String
-
-  @@index([projectId])
-  @@unique([projectId, name])
-}
-
-
-model UserOrganization {
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId       String
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  orgId        String
-
-  role         String?      // OWNER / ADMIN / MEMBER etc.
-
-  @@id([userId, orgId])     // composite PK
-}
-
-
-
-model User {
-  id             String   @id @default(uuid())
-  email          String   @unique
-  firstName      String
-  avatarUrl      String?      // 👈  add this line
-
-  lastName       String
-  isClient       Boolean  @default(false)
-  chatMessages     ChatMessage[]
-
-  chatParticipants ChatParticipant[]
-
-  openAIKey       String?
-  openAIModel    String? @default("gpt-3.5-turbo")
-  jobTitle       String?
-  role           String?
-  preferences    Json?
-  activityLogs   ActivityLog[]
-  startTime      String?
-  endTime        String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  primaryOrgId String?           // FK but nullable
-  primaryOrg   Organization? @relation("PrimaryOrg", fields:[primaryOrgId], references:[id])
-
-  /// new many-to-many edge
-  orgMemberships UserOrganization[]
-
-  tasks          Task[]
-  projects       Project[] @relation("UserProjects")
-}
-
-model Tag {
-  id    String   @id @default(uuid())
-  name  String   @unique
-
-  tasks Task[]   @relation("TaskTags")
-}
-
-model Task {
-  id             String    @id @default(uuid())
-  name           String
-  description    String
-  notes          String?
-  aiInstructions String?
-  priority       Priority  @default(LOW)
-  startsAt       DateTime
-  dueAt          DateTime
-  completed      Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  // Relations
-  user           User    @relation(fields: [userId], references: [id])
-  userId         String
-
-  project        Project? @relation(fields: [projectId], references: [id])
-  projectId      String?
-
-  tags           Tag[]     @relation("TaskTags")
-  subtasks       SubTask[]
-  activityLogs   ActivityLog[]
-
-  @@index([dueAt])
-  @@index([userId])
-  @@unique([projectId, name])
-}
-
-model SubTask {
-  id         String   @id @default(uuid())
-  name       String
-  completed  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  parentTask Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskId     String
-}
-
-model ActivityLog {
-  id        String   @id @default(uuid())
-  message   String
-  createdAt DateTime @default(now())
-
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskId    String
-
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-
-  @@index([taskId])
-  @@index([userId])
-}
-
-model CampaignReply {
-  id        String     @id @default(uuid())
-  leadName  String
-  leadEmail String
-  status    LeadStatus
-  replyContent String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-
-  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId String
-
-  bookedMeeting BookedMeeting?
-
-  @@index([projectId])
-  @@index([leadEmail])
-  @@unique([projectId, leadEmail])
-}
-
-model BookedMeeting {
-  id           String    @id @default(uuid())
-  meetingDate  DateTime?
-  meetingTime  String?
-  meetingLink  String?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId    String
-
-  reply        CampaignReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
-  replyId      String        @unique
-
-  @@index([projectId])
-  @@index([meetingDate])
+  /// Smartlead clientId / campaignId
+  SMARTLEADS
 }
