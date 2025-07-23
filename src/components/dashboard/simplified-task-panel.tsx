@@ -90,20 +90,8 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
         throw new Error(data.error || 'Failed to process request');
       }
       
-      // Debug: log the response to understand the structure
-      console.log('AI Assistant Response:', data);
-      console.log('Response type:', typeof data);
-      console.log('Response keys:', Object.keys(data));
-      
-      // Check if this is a function call response
-      if (data.function_call) {
-        console.log('Function call detected:', data.function_call);
-        setAiResponse(`Function called: ${data.function_call.name}\nArguments: ${data.function_call.arguments}`);
-        return;
-      }
-      
       // The API returns the OpenAI message object with content property
-      const aiContent = data.content || data.message || data.response || JSON.stringify(data) || 'Task processed successfully!';
+      const aiContent = data.content || data.message || data.response || 'Task processed successfully!';
       setAiResponse(aiContent);
       setAiMessage(''); // Clear input after successful request
       
@@ -113,7 +101,7 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
           aiContent.toLowerCase().includes('task')) {
         setTimeout(() => {
           window.location.reload();
-        }, 3000); // Give user time to read the response
+        }, 2000); // Give user time to read the response
       }
       
     } catch (error) {

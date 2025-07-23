@@ -7,196 +7,270 @@ import prisma from '@/lib/prisma';
 import OpenAI from 'openai';
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  FUNCTION DEFINITIONS
+//  TOOL DEFINITIONS
 // ─────────────────────────────────────────────────────────────────────────────
-const FUNCTIONS: OpenAI.Chat.ChatCompletionCreateParams.Function[] = [
+const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
   {
-    name: 'get_tasks',
-    description: 'Get tasks for the current user with optional filters',
-    parameters: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string', description: 'Filter by project ID' },
-        completed: { type: 'boolean', description: 'Filter by completion status' },
-        priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Filter by priority' },
-        limit: { type: 'number', description: 'Maximum number of tasks to return', default: 10 }
-      }
-    }
-  },
-  {
-    name: 'get_projects',
-    description: 'Get projects for the current user and their organizations',
-    parameters: {
-      type: 'object',
-      properties: {
-        organizationId: { type: 'string', description: 'Filter by organization ID' },
-        completed: { type: 'boolean', description: 'Filter by completion status' },
-        limit: { type: 'number', description: 'Maximum number of projects to return', default: 10 }
-      }
-    }
-  },
-  {
-    name: 'get_teams',
-    description: 'Get organizations/teams the user is a member of',
-    parameters: {
-      type: 'object',
-      properties: {
-        limit: { type: 'number', description: 'Maximum number of teams to return', default: 10 }
-      }
-    }
-  },
-  {
-    name: 'create_task',
-    description: 'Create a new task for the user',
-    parameters: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Task name' },
-        description: { type: 'string', description: 'Task description' },
-        projectId: { type: 'string', description: 'Project ID to associate with' },
-        priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
-        dueAt: { type: 'string', description: 'Due date in ISO format' },
-        aiInstructions: { type: 'string', description: 'AI-specific instructions for the task' }
-      },
-      required: ['name', 'description', 'dueAt']
-    }
-  },
-  {
-    name: 'create_multiple_tasks',
-    description: 'Create multiple tasks at once for the user',
-    parameters: {
-      type: 'object',
-      properties: {
-        tasks: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              name: { type: 'string', description: 'Task name' },
-              description: { type: 'string', description: 'Task description' },
-              projectId: { type: 'string', description: 'Project ID to associate with' },
-              priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
-              dueAt: { type: 'string', description: 'Due date in ISO format' },
-              aiInstructions: { type: 'string', description: 'AI-specific instructions for the task' }
-            },
-            required: ['name', 'description', 'dueAt']
-          },
-          description: 'Array of tasks to create'
+    type: 'function',
+    function: {
+      name: 'get_tasks',
+      description: 'Get tasks for the current user with optional filters',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: 'Filter by project ID' },
+          completed: { type: 'boolean', description: 'Filter by completion status' },
+          priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Filter by priority' },
+          limit: { type: 'number', description: 'Maximum number of tasks to return', default: 10 }
         }
-      },
-      required: ['tasks']
-    }
-  },
-  {
-    name: 'create_project',
-    description: 'Create a new project',
-    parameters: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Project name' },
-        description: { type: 'string', description: 'Project description' },
-        organizationId: { type: 'string', description: 'Organization ID to associate with' },
-        dueAt: { type: 'string', description: 'Due date in ISO format' }
-      },
-      required: ['name', 'description']
-    }
-  },
-  {
-    name: 'suggest_task_improvements',
-    description: 'Analyze a task and suggest improvements based on AI instructions and project context',
-    parameters: {
-      type: 'object',
-      properties: {
-        taskId: { type: 'string', description: 'Task ID to analyze' }
-      },
-      required: ['taskId']
-    }
-  },
-  {
-    name: 'get_user_schedule_context',
-    description: 'Get user preferences, working hours, and existing tasks to help with intelligent scheduling',
-    parameters: {
-      type: 'object',
-      properties: {
-        includeTasks: { type: 'boolean', description: 'Include existing tasks in the response', default: true },
-        daysAhead: { type: 'number', description: 'Number of days ahead to analyze', default: 14 }
       }
     }
   },
   {
-    name: 'get_project_analytics',
-    description: 'Get analytics and insights for a project including task completion rates and team performance',
-    parameters: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string', description: 'Project ID to analyze' }
-      },
-      required: ['projectId']
+    type: 'function',
+    function: {
+      name: 'get_projects',
+      description: 'Get projects for the current user and their organizations',
+      parameters: {
+        type: 'object',
+        properties: {
+          organizationId: { type: 'string', description: 'Filter by organization ID' },
+          completed: { type: 'boolean', description: 'Filter by completion status' },
+          limit: { type: 'number', description: 'Maximum number of projects to return', default: 10 }
+        }
+      }
     }
   },
   {
-    name: 'create_project_with_tasks',
-    description: 'REQUIRED: Use this when user asks to create a project with tasks, or mentions creating both a project and tasks together. This creates both the project and all its tasks in one operation.',
-    parameters: {
-      type: 'object',
-      properties: {
-        projectName: { type: 'string', description: 'Project name' },
-        projectDescription: { type: 'string', description: 'Project description' },
-        organizationId: { type: 'string', description: 'Organization ID to associate with' },
-        projectDueAt: { type: 'string', description: 'Project due date in ISO format' },
-        tasks: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              name: { type: 'string', description: 'Task name' },
-              description: { type: 'string', description: 'Task description' },
-              priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
-              dueAt: { type: 'string', description: 'Due date in ISO format' },
-              aiInstructions: { type: 'string', description: 'AI-specific instructions for the task' }
-            },
-            required: ['name', 'description', 'dueAt']
-          },
-          description: 'Array of tasks to create for this project'
+    type: 'function',
+    function: {
+      name: 'get_teams',
+      description: 'Get organizations/teams the user is a member of',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: 'Maximum number of teams to return', default: 10 }
         }
-      },
-      required: ['projectName', 'projectDescription', 'tasks']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_task',
+      description: 'Create a new task for the user',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Task name' },
+          description: { type: 'string', description: 'Task description' },
+          projectId: { type: 'string', description: 'Project ID to associate with' },
+          priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
+          dueAt: { type: 'string', description: 'Due date in ISO format' },
+          aiInstructions: { type: 'string', description: 'AI-specific instructions for the task' }
+        },
+        required: ['name', 'description', 'dueAt']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_multiple_tasks',
+      description: 'Create multiple tasks at once for the user',
+      parameters: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Task name' },
+                description: { type: 'string', description: 'Task description' },
+                projectId: { type: 'string', description: 'Project ID to associate with' },
+                priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
+                dueAt: { type: 'string', description: 'Due date in ISO format' },
+                aiInstructions: { type: 'string', description: 'AI-specific instructions for the task' }
+              },
+              required: ['name', 'description', 'dueAt']
+            },
+            description: 'Array of tasks to create'
+          }
+        },
+        required: ['tasks']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_project',
+      description: 'Create a new project',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Project name' },
+          description: { type: 'string', description: 'Project description' },
+          organizationId: { type: 'string', description: 'Organization ID to associate with' },
+          dueAt: { type: 'string', description: 'Due date in ISO format' }
+        },
+        required: ['name', 'description']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'suggest_task_improvements',
+      description: 'Analyze a task and suggest improvements based on AI instructions and project context',
+      parameters: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: 'Task ID to analyze' }
+        },
+        required: ['taskId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_user_schedule_context',
+      description: 'Get user preferences, working hours, and existing tasks to help with intelligent scheduling',
+      parameters: {
+        type: 'object',
+        properties: {
+          includeTasks: { type: 'boolean', description: 'Include existing tasks in the response', default: true },
+          daysAhead: { type: 'number', description: 'Number of days ahead to analyze', default: 14 }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_project_analytics',
+      description: 'Get analytics and insights for a project including task completion rates and team performance',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: 'Project ID to analyze' }
+        },
+        required: ['projectId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_project_with_tasks',
+      description: 'REQUIRED: Use this when user asks to create a project with tasks, or mentions creating both a project and tasks together. This creates both the project and all its tasks in one operation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectName: { type: 'string', description: 'Project name' },
+          projectDescription: { type: 'string', description: 'Project description' },
+          organizationId: { type: 'string', description: 'Organization ID to associate with' },
+          projectDueAt: { type: 'string', description: 'Project due date in ISO format' },
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Task name' },
+                description: { type: 'string', description: 'Task description' },
+                priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM' },
+                dueAt: { type: 'string', description: 'Due date in ISO format' },
+                aiInstructions: { type: 'string', description: 'AI-specific instructions for the task' }
+              },
+              required: ['name', 'description', 'dueAt']
+            },
+            description: 'Array of tasks to create for this project'
+          }
+        },
+        required: ['projectName', 'projectDescription', 'tasks']
+      }
     }
   }
 ];
 
-// Helper function to detect when we should force function calls
-function detectRequiredFunction(prompt: string): string | undefined {
-  const lowerPrompt = prompt.toLowerCase();
-  
-  // Force project creation with tasks
-  if ((lowerPrompt.includes('create') || lowerPrompt.includes('make') || lowerPrompt.includes('add')) &&
-      lowerPrompt.includes('project') && 
-      (lowerPrompt.includes('task') || lowerPrompt.includes('todo'))) {
-    return 'create_project_with_tasks';
+// Helper function to run tools in a loop until completion
+async function runWithTools(
+  messages: OpenAI.Chat.ChatCompletionMessageParam[], 
+  openai: OpenAI, 
+  model: string, 
+  userId: string,
+  maxIterations: number = 5
+): Promise<OpenAI.Chat.ChatCompletionMessage> {
+  let loopMessages = [...messages];
+  let iteration = 0;
+
+  while (iteration < maxIterations) {
+    iteration++;
+    console.log(`🔄 Tool execution loop iteration ${iteration}/${maxIterations}`);
+
+    const resp = await openai.chat.completions.create({
+      model,
+      messages: loopMessages,
+      tools: TOOLS,
+      tool_choice: 'auto',
+    });
+
+    const choice = resp.choices[0];
+    console.log(`📤 Response finish_reason: ${choice.finish_reason}, tool_calls count: ${choice.message.tool_calls?.length || 0}`);
+
+    // No tool calls → final answer
+    if (choice.finish_reason !== 'tool_calls' || !choice.message.tool_calls || choice.message.tool_calls.length === 0) {
+      console.log('✅ No more tool calls, returning final response');
+      return choice.message;
+    }
+
+    // Execute *all* tool calls returned in this turn
+    const toolResults: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+
+    console.log(`🔧 Executing ${choice.message.tool_calls.length} tool call(s):`);
+    
+    for (let i = 0; i < choice.message.tool_calls.length; i++) {
+      const call = choice.message.tool_calls[i];
+      const { name, arguments: argStr } = call.function;
+      
+      console.log(`  ${i + 1}. ${name} with args:`, argStr);
+      
+      try {
+        const args = JSON.parse(argStr ?? '{}');
+        const result = await callTool(name, args, userId);
+        
+        console.log(`  ✅ ${name} completed successfully`);
+        
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify(result),
+        });
+      } catch (error) {
+        console.error(`  ❌ ${name} failed:`, error);
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({ 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            success: false 
+          }),
+        });
+      }
+    }
+
+    // Add the assistant message + tool results and continue the loop
+    loopMessages = [...loopMessages, choice.message, ...toolResults];
+    console.log(`📝 Added ${toolResults.length} tool results to conversation, continuing loop...`);
   }
-  
-  // Force multiple task creation
-  if ((lowerPrompt.includes('create') || lowerPrompt.includes('make') || lowerPrompt.includes('add')) &&
-      (lowerPrompt.includes('tasks') || lowerPrompt.includes('multiple') || 
-       lowerPrompt.includes('several') || lowerPrompt.includes('list'))) {
-    return 'create_multiple_tasks';
-  }
-  
-  // Force single task creation
-  if ((lowerPrompt.includes('create') || lowerPrompt.includes('make') || lowerPrompt.includes('add')) &&
-      lowerPrompt.includes('task') && !lowerPrompt.includes('tasks')) {
-    return 'create_task';
-  }
-  
-  // Force schedule context when planning or scheduling
-  if (lowerPrompt.includes('schedule') || lowerPrompt.includes('plan') || 
-      lowerPrompt.includes('organize') || lowerPrompt.includes('workload')) {
-    return 'get_user_schedule_context';
-  }
-  
-  return undefined;
+
+  console.warn(`⚠️ Reached maximum iterations (${maxIterations}), returning last response`);
+  throw new Error(`Tool execution exceeded maximum iterations (${maxIterations})`);
 }
+
+// Router to call our tools
 
 // Router to call our tools
 async function callTool(fn: string, args: any, userId: string) {
@@ -1005,14 +1079,10 @@ export async function GET(req: NextRequest) {
   });
 
   try {
-    // 6️⃣  First completion with tool defs
-    const forcedFunction = detectRequiredFunction(prompt);
-    const completion = await openai.chat.completions.create({
-      model: dbUser?.openAIModel || 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a productivity AI assistant that helps users manage their tasks, projects, and teams. 
+    // Use the new runWithTools function to handle chained tool calls
+    const systemMessage = {
+      role: 'system' as const,
+      content: `You are a productivity AI assistant that helps users manage their tasks, projects, and teams. 
       You have access to their database and can:
       - View and analyze tasks, projects, and team data
       - Create single tasks using create_task or multiple tasks at once using create_multiple_tasks
@@ -1056,45 +1126,18 @@ export async function GET(req: NextRequest) {
       - If no date specified, schedule based on available slots and workload
       
       ALWAYS call the function to actually create what the user requests. Be helpful, concise, and actionable in your responses.`
-        },
-        { role: 'user', content: prompt }
-      ],
-      functions: FUNCTIONS,
-      function_call: forcedFunction ? { name: forcedFunction } : 'auto',
-    });
+    };
 
-    const [choice] = completion.choices;
+    const userMessage = { role: 'user' as const, content: prompt };
+    
+    const finalMessage = await runWithTools(
+      [systemMessage, userMessage], 
+      openai, 
+      dbUser?.openAIModel || 'gpt-4o-mini', 
+      userId
+    );
 
-    // 6️⃣  If the model wants to call a function → execute → follow-up
-    if (choice.finish_reason === 'function_call' && choice.message.function_call) {
-      const { name, arguments: argStr } = choice.message.function_call;
-      const args = JSON.parse(argStr ?? '{}');
-
-      let toolResult;
-      try {
-        toolResult = await callTool(name, args, userId);
-      } catch (err) {
-        return NextResponse.json({ error: (err as Error).message }, { status: 400 });
-      }
-
-      const followUp = await openai.chat.completions.create({
-        model: dbUser?.openAIModel || 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a productivity AI assistant. Provide helpful, actionable responses based on the data retrieved.`
-          },
-          { role: 'user', content: prompt },
-          choice.message,
-          { role: 'function', name, content: JSON.stringify(toolResult) },
-        ],
-      });
-
-      return NextResponse.json(followUp.choices[0].message);
-    }
-
-    // 7️⃣  Plain answer
-    return NextResponse.json(choice.message);
+    return NextResponse.json(finalMessage);
   } catch (error: any) {
     console.error('OpenAI API error:', error);
     
@@ -1205,67 +1248,22 @@ export async function POST(req: NextRequest) {
       ALWAYS call the function to actually create what the user requests. Be helpful, concise, and actionable in your responses.`
     };
 
-    const forcedFunction = detectRequiredFunction(prompt);
-    
     console.log('🤖 Starting AI assistant call with:', {
       userId,
       promptLength: prompt.length,
       messageCount: conversationMessages.length,
-      forcedFunction,
       currentDate: formattedDate
     });
 
-    const completion = await openai.chat.completions.create({
-      model: dbUser?.openAIModel || 'gpt-4o-mini',
-      messages: [systemMessage, ...conversationMessages, { role: 'user', content: prompt }],
-      functions: FUNCTIONS,
-      function_call: forcedFunction ? { name: forcedFunction } : 'auto',
-    });
+    const finalMessage = await runWithTools(
+      [systemMessage, ...conversationMessages, { role: 'user', content: prompt }], 
+      openai, 
+      dbUser?.openAIModel || 'gpt-4o-mini', 
+      userId
+    );
 
-    console.log('📤 OpenAI response:', {
-      finishReason: completion.choices[0].finish_reason,
-      hasFunctionCall: !!completion.choices[0].message.function_call,
-      functionName: completion.choices[0].message.function_call?.name
-    });
-
-    const [choice] = completion.choices;
-
-    if (choice.finish_reason === 'function_call' && choice.message.function_call) {
-      const { name, arguments: argStr } = choice.message.function_call;
-      const args = JSON.parse(argStr ?? '{}');
-
-      console.log('🔧 Function call detected:', {
-        name,
-        args: JSON.stringify(args, null, 2)
-      });
-
-      let toolResult;
-      try {
-        toolResult = await callTool(name, args, userId);
-        console.log('✅ Tool result:', JSON.stringify(toolResult, null, 2));
-      } catch (err) {
-        console.error('💥 Tool execution error:', err);
-        return NextResponse.json({ error: (err as Error).message }, { status: 400 });
-      }
-
-      console.log('🔄 Generating follow-up response...');
-      const followUp = await openai.chat.completions.create({
-        model: dbUser?.openAIModel || 'gpt-4o-mini',
-        messages: [
-          systemMessage,
-          ...messages,
-          { role: 'user', content: prompt },
-          choice.message,
-          { role: 'function', name, content: JSON.stringify(toolResult) },
-        ],
-      });
-
-      console.log('✅ Follow-up response generated');
-      return NextResponse.json(followUp.choices[0].message);
-    }
-
-    console.log('💬 No function call, returning direct response');
-    return NextResponse.json(choice.message);
+    console.log('✅ Final response generated');
+    return NextResponse.json(finalMessage);
   } catch (error: any) {
     console.error('OpenAI API error:', error);
     
