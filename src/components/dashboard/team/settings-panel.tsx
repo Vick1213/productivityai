@@ -1,8 +1,9 @@
-"use client";
+'use client';
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
+import { USER_ROLES_OPTIONS, ORGANIZATION_ROLES, canManageUsers } from "@/lib/constants/roles";
 
 import {
   Tabs,
@@ -70,11 +71,7 @@ type SmartleadsCampaign = {
   isSelected: boolean;
 };
 
-const USER_ROLES = [
-  { value: "OWNER", label: "Owner" },
-  { value: "ADMIN", label: "Admin" },
-  { value: "MEMBER", label: "Member" },
-];
+// Use the imported USER_ROLES_OPTIONS instead of defining locally
 
 /* ──────────────── component ──────────────── */
 export function OrganizationSettingsPanel({
@@ -379,7 +376,7 @@ export function OrganizationSettingsPanel({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {USER_ROLES.map((r) => (
+                              {USER_ROLES_OPTIONS.map((r) => (
                                 <SelectItem key={r.value} value={r.value}>
                                   {r.label}
                                 </SelectItem>

@@ -127,7 +127,7 @@ model Goal {
 model UserOrganization {
   userId       String
   orgId        String
-  role         String?
+  role         String?  // Will store OrganizationRole values: OWNER, ADMIN, SALES_MANAGER, CAMPAIGN_MANAGER, PROJECT_LEAD, MEMBER
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -262,6 +262,15 @@ enum LeadStatus {
   BOOKED_MEETING
   NEGATIVE
   NO_RESPONSE
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  SALES_MANAGER
+  CAMPAIGN_MANAGER
+  PROJECT_LEAD
+  MEMBER
 }
 
 /// ─────────────────── chat enums ───────────────────
