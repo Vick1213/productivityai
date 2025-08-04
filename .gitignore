@@ -5,3 +5,7 @@ node_modules/
 .next/
 /generated/prisma
 .DS_Store
+package-lock.json
+
+# clerk configuration (can include secrets)
+/.clerk/

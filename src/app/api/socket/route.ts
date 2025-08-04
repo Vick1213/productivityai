@@ -2,6 +2,10 @@ import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { addUserConnection, removeUserConnection } from '@/lib/notifications';
 
+// Optimize for Edge Runtime
+export const runtime = 'edge';
+export const maxDuration = 10;
+
 export async function GET(req: NextRequest) {
   // Get user from Clerk auth
   const { userId } = await auth();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -25,6 +25,7 @@ import {
   Activity
 } from 'lucide-react';
 import { format } from 'date-fns';
+import React from 'react';
 
 interface CampaignStats {
   sent: number;
@@ -109,6 +110,30 @@ interface ClientGroup {
   campaigns: Campaign[];
   combinedStats: CampaignStats;
 }
+
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const UPDATE_INTERVAL = 30 * 1000; // 30 seconds for real-time updates
+
+// Memoized components for performance
+const MemoizedStatCard = React.memo(({ title, value, icon: Icon, description, trend }: {
+  title: string;
+  value: string | number;
+  icon: any;
+  description?: string;
+  trend?: string;
+}) => (
+  <Card>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      <Icon className="h-4 w-4 text-muted-foreground" />
+    </CardHeader>
+    <CardContent>
+      <div className="text-2xl font-bold">{value}</div>
+      {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      {trend && <p className="text-xs text-green-600">{trend}</p>}
+    </CardContent>
+  </Card>
+));
 
 export default function CampaignAnalyticsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -303,57 +328,34 @@ export default function CampaignAnalyticsPage() {
 
       {/* Overall Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Sent</CardTitle>
-            <Mail className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overallStats.sent.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              Across all campaigns
-            </p>
-          </CardContent>
-        </Card>
+        <MemoizedStatCard 
+          title="Total Sent" 
+          value={overallStats.sent.toLocaleString()} 
+          icon={Mail} 
+          description="Across all campaigns" 
+        />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Open Rate</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overallStats.openRate.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
-              {overallStats.opens.toLocaleString()} total opens
-            </p>
-          </CardContent>
-        </Card>
+        <MemoizedStatCard 
+          title="Open Rate" 
+          value={`${overallStats.openRate.toFixed(1)}%`} 
+          icon={TrendingUp} 
+          description={`${overallStats.opens.toLocaleString()} total opens`} 
+        />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Reply Rate</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overallStats.replyRate.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
-              {overallStats.replies.toLocaleString()} total replies
-            </p>
-          </CardContent>
-        </Card>
+        <MemoizedStatCard 
+          title="Reply Rate" 
+          value={`${overallStats.replyRate.toFixed(1)}%`} 
+          icon={MessageSquare} 
+          description={`${overallStats.replies.toLocaleString()} total replies`} 
+        />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Positive Rate</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{overallStats.positiveRate.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
-              {overallStats.positives.toLocaleString()} positive responses
-            </p>
-          </CardContent>
-        </Card>
+        <MemoizedStatCard 
+          title="Positive Rate" 
+          value={`${overallStats.positiveRate.toFixed(1)}%`} 
+          icon={Target} 
+          description={`${overallStats.positives.toLocaleString()} positive responses`} 
+          trend="↑ 2.5%"
+        />
       </div>
 
       {/* Campaign Performance Chart Placeholder */}

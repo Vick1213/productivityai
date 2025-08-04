@@ -2,6 +2,10 @@ import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+// Use Node.js runtime for Prisma compatibility
+export const runtime = 'nodejs';
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     const { userId } = await auth();

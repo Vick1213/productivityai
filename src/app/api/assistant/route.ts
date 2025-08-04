@@ -1,10 +1,39 @@
 // app/api/assistant/route.ts
 // -----------------------------------------------------------------------------
 //  AI Assistant API with comprehensive database functions
+import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import prisma from '@/lib/prisma';
-import OpenAI from 'openai';
+
+// Performance optimizations
+export const maxDuration = 30; // Limit function duration
+export const runtime = 'nodejs';
+
+// Simple in-memory cache for responses (consider Redis for production)
+const responseCache = new Map();
+const CACHE_TTL = 60000; // 1 minute
+
+// Rate limiting
+const userRequestCounts = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_REQUESTS_PER_MINUTE = 10;
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const userRequests = userRequestCounts.get(userId) || [];
+  
+  // Remove old requests
+  const recentRequests = userRequests.filter((time: number) => now - time < RATE_LIMIT_WINDOW);
+  
+  if (recentRequests.length >= MAX_REQUESTS_PER_MINUTE) {
+    return false;
+  }
+  
+  recentRequests.push(now);
+  userRequestCounts.set(userId, recentRequests);
+  return true;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  TOOL DEFINITIONS
@@ -365,6 +394,8 @@ async function callTool(fn: string, args: any, userId: string) {
 
 // Tool implementations
 async function getTasks(userId: string, args: any) {
+  const limit = Math.min(args.limit || 10, 20); // Cap at 20 tasks
+  
   const tasks = await prisma.task.findMany({
     where: {
       userId,
@@ -372,30 +403,55 @@ async function getTasks(userId: string, args: any) {
       ...(args.completed !== undefined && { completed: args.completed }),
       ...(args.priority && { priority: args.priority })
     },
-    include: {
-      project: { select: { id: true, name: true, description: true } },
-      tags: { select: { id: true, name: true } },
-      subtasks: { select: { id: true, name: true, completed: true } }
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      completed: true,
+      priority: true,
+      dueAt: true,
+      startsAt: true,
+      createdAt: true,
+      project: { 
+        select: { 
+          id: true, 
+          name: true, 
+          description: true 
+        } 
+      },
+      tags: { 
+        select: { 
+          id: true, 
+          name: true 
+        },
+        take: 3 // Limit tags
+      }
     },
     orderBy: [
       { priority: 'desc' },
       { dueAt: 'asc' }
     ],
-    take: args.limit || 10
+    take: limit
   });
 
   return {
     tasks,
     count: tasks.length,
-    message: `Found ${tasks.length} task(s) matching your criteria`
+    message: `Found ${tasks.length} task(s) matching your criteria${tasks.length === limit ? ' (showing first ' + limit + ')' : ''}`
   };
 }
 
 async function getProjects(userId: string, args: any) {
+  const limit = Math.min(args.limit || 10, 15); // Cap at 15 projects
+  
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: {
-      orgMemberships: { select: { orgId: true } }
+    select: {
+      primaryOrgId: true,
+      orgMemberships: { 
+        select: { orgId: true },
+        take: 10 // Limit org memberships
+      }
     }
   });
 
@@ -410,9 +466,27 @@ async function getProjects(userId: string, args: any) {
       ...(args.organizationId && { organizationId: args.organizationId }),
       ...(args.completed !== undefined && { completed: args.completed })
     },
-    include: {
-      organization: { select: { id: true, name: true } },
-      users: { select: { id: true, firstName: true, lastName: true } },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      completed: true,
+      dueAt: true,
+      createdAt: true,
+      organization: { 
+        select: { 
+          id: true, 
+          name: true 
+        } 
+      },
+      users: { 
+        select: { 
+          id: true, 
+          firstName: true, 
+          lastName: true 
+        },
+        take: 5 // Limit users per project
+      },
       tasks: {
         select: {
           id: true,
@@ -420,18 +494,28 @@ async function getProjects(userId: string, args: any) {
           completed: true,
           priority: true,
           dueAt: true
-        }
+        },
+        take: 5, // Limit tasks per project
+        orderBy: { dueAt: 'asc' }
       },
-      goals: { select: { id: true, name: true, currentProgress: true, totalTarget: true } }
+      goals: { 
+        select: { 
+          id: true, 
+          name: true, 
+          currentProgress: true, 
+          totalTarget: true 
+        },
+        take: 3 // Limit goals per project
+      }
     },
     orderBy: { createdAt: 'desc' },
-    take: args.limit || 10
+    take: limit
   });
 
   return {
     projects,
     count: projects.length,
-    message: `Found ${projects.length} project(s) you have access to`
+    message: `Found ${projects.length} project(s) you have access to${projects.length === limit ? ' (showing first ' + limit + ')' : ''}`
   };
 }
 
@@ -1042,6 +1126,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
   }
 
+  // Rate limiting
+  if (!checkRateLimit(userId)) {
+    return NextResponse.json({ 
+      error: 'Rate limit exceeded. Please try again in a minute.' 
+    }, { status: 429 });
+  }
+
   // 2️⃣  Look up the user's personal OpenAI key and model preference
   const dbUser = await prisma.user.findUnique({
     where: { id: userId },
@@ -1054,13 +1145,21 @@ export async function GET(req: NextRequest) {
     }, { status: 400 });
   }
 
+  // 4️⃣  Read the prompt
+  const prompt = req.nextUrl.searchParams.get('q') ?? 'Hello! How can I help you manage your tasks and projects today?';
+
+  // Check cache first
+  const cacheKey = `${userId}:${prompt}`;
+  const cached = responseCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return NextResponse.json(cached.response);
+  }
+
   // 3️⃣  Create the OpenAI client for *this* request
   const openai = new OpenAI({
     apiKey: dbUser?.openAIKey || process.env.OPENAI_API_KEY!,
+    timeout: 20000, // 20 second timeout
   });
-
-  // 4️⃣  Read the prompt
-  const prompt = req.nextUrl.searchParams.get('q') ?? 'Hello! How can I help you manage your tasks and projects today?';
 
   // 5️⃣  Get current date information for context
   const currentDate = new Date();
@@ -1129,13 +1228,29 @@ export async function GET(req: NextRequest) {
     };
 
     const userMessage = { role: 'user' as const, content: prompt };
-    
-    const finalMessage = await runWithTools(
+      const finalMessage = await runWithTools(
       [systemMessage, userMessage], 
       openai, 
       dbUser?.openAIModel || 'gpt-4o-mini', 
-      userId
+      userId,
+      3 // Reduced from 5 to limit iterations
     );
+
+    // Cache successful responses
+    responseCache.set(cacheKey, {
+      response: finalMessage,
+      timestamp: Date.now()
+    });
+
+    // Clean up old cache entries periodically
+    if (responseCache.size > 100) {
+      const now = Date.now();
+      for (const [key, value] of responseCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL * 2) {
+          responseCache.delete(key);
+        }
+      }
+    }
 
     return NextResponse.json(finalMessage);
   } catch (error: any) {

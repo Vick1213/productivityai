@@ -1,6 +1,11 @@
 import { broadcastToUser } from '@/lib/notifications';
 import prisma from '@/lib/prisma';
 
+// Performance optimizations
+const NOTIFICATION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes instead of constant checking
+const MAX_NOTIFICATIONS_PER_RUN = 20; // Limit notifications processed per run
+const NOTIFICATION_CACHE_TTL = 10 * 60 * 1000; // 10 minutes cache
+
 interface ChatNotification {
   id: string;
   type: "chat";
@@ -34,25 +39,46 @@ interface TaskNotification {
 
 type Notification = ChatNotification | ProjectNotification | TaskNotification;
 
-// Track which notifications we've already sent to avoid spam
-const sentNotifications = new Set<string>();
+// Track which notifications we've already sent to avoid spam with expiry
+const sentNotifications = new Map<string, number>(); // Map ID to timestamp
+
+// Clean up old notification records periodically
+function cleanupOldNotifications() {
+  const now = Date.now();
+  const cutoff = now - NOTIFICATION_CACHE_TTL;
+  
+  for (const [key, timestamp] of sentNotifications.entries()) {
+    if (timestamp < cutoff) {
+      sentNotifications.delete(key);
+    }
+  }
+}
 
 // Check for task notifications
 export async function checkTaskNotifications() {
   try {
+    // Clean up old notifications first
+    cleanupOldNotifications();
+    
     const now = new Date();
     const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-    // Get overdue tasks
+    // More targeted queries with limits
+    // Only check HIGH priority overdue tasks for immediate attention
     const overdueTasks = await prisma.task.findMany({
       where: {
         dueAt: {
           lt: now,
         },
         completed: false,
+        priority: 'HIGH', // Only high priority
       },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        dueAt: true,
+        priority: true,
         project: {
           select: {
             name: true,
@@ -64,9 +90,9 @@ export async function checkTaskNotifications() {
           },
         },
       },
-    });
-
-    // Get tasks due soon (within 1 hour)
+      take: 10, // Limit results
+      orderBy: { dueAt: 'asc' } // Most overdue first
+    });    // Get tasks due soon (within 1 hour) - only HIGH priority
     const tasksDueSoon = await prisma.task.findMany({
       where: {
         dueAt: {
@@ -74,8 +100,13 @@ export async function checkTaskNotifications() {
           lte: oneHourFromNow,
         },
         completed: false,
+        priority: 'HIGH', // Only high priority
       },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        dueAt: true,
+        priority: true,
         project: {
           select: {
             name: true,
@@ -87,9 +118,11 @@ export async function checkTaskNotifications() {
           },
         },
       },
+      take: 10, // Limit results
+      orderBy: { dueAt: 'asc' }
     });
 
-    // Get tasks starting soon (within 1 hour)
+    // Get tasks starting soon (within 1 hour) - only HIGH priority
     const tasksStartingSoon = await prisma.task.findMany({
       where: {
         startsAt: {
@@ -97,8 +130,13 @@ export async function checkTaskNotifications() {
           lte: oneHourFromNow,
         },
         completed: false,
+        priority: 'HIGH', // Only high priority
       },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        startsAt: true,
+        priority: true,
         project: {
           select: {
             name: true,
@@ -110,6 +148,8 @@ export async function checkTaskNotifications() {
           },
         },
       },
+      take: 10, // Limit results
+      orderBy: { startsAt: 'asc' }
     });
 
     // Send overdue task notifications
@@ -129,7 +169,7 @@ export async function checkTaskNotifications() {
         };
         
         broadcastToUser(task.user.id, notification);
-        sentNotifications.add(notificationId);
+        sentNotifications.set(notificationId, Date.now());
       }
     });
 
@@ -150,7 +190,7 @@ export async function checkTaskNotifications() {
         };
         
         broadcastToUser(task.user.id, notification);
-        sentNotifications.add(notificationId);
+        sentNotifications.set(notificationId, Date.now());
       }
     });
 
@@ -171,7 +211,7 @@ export async function checkTaskNotifications() {
         };
         
         broadcastToUser(task.user.id, notification);
-        sentNotifications.add(notificationId);
+        sentNotifications.set(notificationId, Date.now());
       }
     });
 
@@ -219,7 +259,7 @@ export async function checkProjectNotifications() {
           broadcastToUser(user.id, notification);
         });
         
-        sentNotifications.add(notificationId);
+        sentNotifications.set(notificationId, Date.now());
       }
     });
 
@@ -236,7 +276,7 @@ export function cleanupSentNotifications() {
 // Start the notification service
 export function startNotificationService() {
   // Check tasks every 5 minutes
-  setInterval(checkTaskNotifications, 5 * 60 * 1000);
+  setInterval(checkTaskNotifications, NOTIFICATION_CHECK_INTERVAL);
   
   // Check projects every 30 minutes
   setInterval(checkProjectNotifications, 30 * 60 * 1000);

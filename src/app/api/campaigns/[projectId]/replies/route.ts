@@ -193,6 +193,7 @@ export async function POST(
     });
 
     let reply;
+    let createdPositiveTask = false;
     if (existingReply) {
       // Update existing record
       reply = await prisma.campaignReply.update({
@@ -225,7 +226,49 @@ export async function POST(
       });
     }
 
-    return NextResponse.json({ reply });
+    // If status is POSITIVE, create a task for campaign manager to reply
+    if (status === 'POSITIVE') {
+      // Find campaign manager in the organization
+      const orgId = project.organizationId ?? undefined;
+      let campaignManagerId = null;
+      if (orgId) {
+        // Find user with role CAMPAIGN_MANAGER
+        const campaignManager = await prisma.userOrganization.findFirst({
+          where: {
+            orgId: orgId,
+            role: 'CAMPAIGN_MANAGER'
+          }
+        });
+        if (campaignManager) {
+          campaignManagerId = campaignManager.userId;
+        } else {
+          // Fallback: get any org member
+          const anyMember = await prisma.userOrganization.findFirst({
+            where: { orgId: orgId }
+          });
+          if (anyMember) {
+            campaignManagerId = anyMember.userId;
+          }
+        }
+      }
+      if (campaignManagerId) {
+        await prisma.task.create({
+          data: {
+            name: `Reply to positive lead: ${leadName}`,
+            description: `Reply to lead ${leadName} (${leadEmail}) from campaign.`,
+            priority: 'HIGH',
+            startsAt: new Date(),
+            dueAt: new Date(Date.now() + 24*60*60*1000), // due in 24h
+            projectId: projectId,
+            userId: campaignManagerId,
+            aiInstructions: `Please reply to this positive lead as soon as possible.`
+          }
+        });
+        createdPositiveTask = true;
+      }
+    }
+
+    return NextResponse.json({ reply, createdPositiveTask });
   } catch (error) {
     console.error('Error creating campaign reply:', error);
     return NextResponse.json(
