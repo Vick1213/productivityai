@@ -268,25 +268,11 @@ export async function checkProjectNotifications() {
   }
 }
 
-// Clean up old sent notifications (run daily)
+// Clean up old sent notifications
 export function cleanupSentNotifications() {
   sentNotifications.clear();
 }
 
-// Start the notification service
-export function startNotificationService() {
-  // Check tasks every 5 minutes
-  setInterval(checkTaskNotifications, NOTIFICATION_CHECK_INTERVAL);
-  
-  // Check projects every 30 minutes
-  setInterval(checkProjectNotifications, 30 * 60 * 1000);
-  
-  // Clean up sent notifications daily
-  setInterval(cleanupSentNotifications, 24 * 60 * 60 * 1000);
-  
-  // Run initial checks
-  checkTaskNotifications();
-  checkProjectNotifications();
-  
-  console.log('Notification service started');
-}
+// Note: Real-time notification service has been disabled to reduce compute costs on Vercel.
+// The check functions above can still be called manually via API endpoints if needed.
+// For production use, consider using Vercel Cron Jobs to periodically check notifications.

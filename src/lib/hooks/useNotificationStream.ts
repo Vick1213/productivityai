@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useState } from 'react';
 
 interface NotificationEvent {
   type: string;
@@ -7,60 +6,19 @@ interface NotificationEvent {
   message?: string;
 }
 
+/**
+ * Real-time notification stream has been disabled to reduce compute costs on Vercel.
+ * This hook now returns a stub to prevent breaking existing imports.
+ * 
+ * To re-enable notifications, consider:
+ * 1. Using Vercel Cron Jobs with polling
+ * 2. Implementing database-backed notifications
+ * 3. Using a third-party service (Pusher, Ably, etc.)
+ */
 export function useNotificationStream(onNotification: (notification: any) => void) {
-  const { userId } = useAuth();
-  const [isConnected, setIsConnected] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  // Always return disconnected state since SSE is disabled
+  const [isConnected] = useState(false);
 
-  useEffect(() => {
-    if (!userId) return;
-
-    // Close existing connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    // Create new SSE connection
-    const eventSource = new EventSource('/api/socket');
-    eventSourceRef.current = eventSource;
-
-    eventSource.onopen = () => {
-      console.log('Notification stream connected');
-      setIsConnected(true);
-    };
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data: NotificationEvent = JSON.parse(event.data);
-        
-        if (data.type === 'connected') {
-          console.log('Connected to notification stream');
-        } else if (data.type === 'notification' && data.data) {
-          onNotification(data.data);
-        }
-      } catch (error) {
-        console.error('Error parsing SSE message:', error);
-      }
-    };
-
-    eventSource.onerror = (error) => {
-      console.error('Notification stream error:', error);
-      setIsConnected(false);
-      
-      // Attempt to reconnect after a delay
-      setTimeout(() => {
-        if (userId && eventSourceRef.current?.readyState === EventSource.CLOSED) {
-          // Reconnection logic would go here if needed
-        }
-      }, 5000);
-    };
-
-    // Cleanup on unmount
-    return () => {
-      eventSource.close();
-      setIsConnected(false);
-    };
-  }, [userId, onNotification]);
-
+  // No-op: Real-time streaming disabled
   return { isConnected };
 }

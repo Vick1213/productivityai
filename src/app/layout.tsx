@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
-import { NotificationServiceInitializer } from "@/components/NotificationServiceInitializer";
 import { EmailServiceInitializer } from "@/components/EmailServiceInitializer";
 
 const geistSans = Geist({
@@ -31,7 +30,6 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
       <ClerkProvider>
-        <NotificationServiceInitializer />
         <EmailServiceInitializer />
         {children}
       </ClerkProvider> 
