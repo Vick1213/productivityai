@@ -68,3 +68,40 @@ export async function deleteTask(id: string) {
   await prisma.task.delete({ where: { id } });
   revalidatePath('/dashboard');
 }
+
+export async function updateTask(taskId: string, form: FormData) {
+  const { userId: currentUser } = await auth();
+  if (!currentUser) throw new Error('Unauthenticated');
+
+  const name = form.get('name')?.toString()?.trim();
+  const description = form.get('description')?.toString() ?? '';
+  const priority = form.get('priority')?.toString().toUpperCase() as Priority;
+  const projectId = form.get('projectId')?.toString() || null;
+  const assigneeId = form.get('userId')?.toString() || currentUser;
+
+  // Handle due date and time
+  const dueDate = form.get('dueDate')?.toString();
+  const dueTime = form.get('dueTime')?.toString();
+  
+  let dueAt: Date | undefined;
+  if (dueDate) {
+    const timeStr = dueTime || '23:59';
+    dueAt = new Date(`${dueDate}T${timeStr}:00`);
+  }
+
+  const updateData: any = {};
+  if (name) updateData.name = name;
+  if (description !== undefined) updateData.description = description;
+  if (priority) updateData.priority = priority;
+  if (projectId !== undefined) updateData.projectId = projectId;
+  if (assigneeId) updateData.userId = assigneeId;
+  if (dueAt) updateData.dueAt = dueAt;
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: updateData,
+  });
+
+  revalidatePath('/dashboard');
+  if (projectId) revalidatePath(`/dashboard/projects/${projectId}`);
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useTransition } from 'react';
-import { addTask, toggleTask, deleteTask } from '@/lib/actions/tasks';
+import { addTask, toggleTask, deleteTask, updateTask } from '@/lib/actions/tasks';
 import {
   Card,
   CardContent,
@@ -16,8 +16,9 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, isToday, isTomorrow, isPast } from 'date-fns';
-import { Plus, MessageSquare, Calendar, Clock, Trash2, AlertTriangle, Target, CheckCircle } from 'lucide-react';
+import { Plus, MessageSquare, Calendar, Clock, Trash2, AlertTriangle, Target, CheckCircle, Edit, Users, Building } from 'lucide-react';
 import { AudioTaskCreator } from './audio-task-creator';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface Task {
   id: string;
@@ -29,24 +30,65 @@ interface Task {
   project?: {
     id: string;
     name: string;
+    organizationId: string | null;
+    organization: {
+      id: string;
+      name: string;
+    } | null;
+  };
+  user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    avatarUrl: string | null;
   };
 }
 
 interface Project {
   id: string;
   name: string;
+  organizationId: string | null;
+  organization: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+interface Organization {
+  id: string;
+  name: string;
+}
+
+interface TeamMember {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  avatarUrl: string | null;
 }
 
 interface SimplifiedTaskPanelProps {
   tasks: Task[];
   projects: Project[];
+  organizations: Organization[];
+  teamMembers: TeamMember[];
+  currentUserId: string;
 }
 
-export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProps) {
+export function SimplifiedTaskPanel({ 
+  tasks, 
+  projects, 
+  organizations, 
+  teamMembers, 
+  currentUserId 
+}: SimplifiedTaskPanelProps) {
   const [isPending, startTransition] = useTransition();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
   const [showAudioCreator, setShowAudioCreator] = useState(false);
+  const [showStatusPane, setShowStatusPane] = useState(true);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [aiMessage, setAiMessage] = useState('');
   const [aiResponse, setAiResponse] = useState('');
 
@@ -188,6 +230,21 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
                   {task.project.name}
                 </Badge>
               )}
+              {task.project?.organization && (
+                <Badge variant="outline" className="text-xs flex items-center gap-1">
+                  <Building className="h-3 w-3" />
+                  {task.project.organization.name}
+                </Badge>
+              )}
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Avatar className="h-4 w-4">
+                  <AvatarImage src={task.user.avatarUrl || undefined} />
+                  <AvatarFallback className="text-[8px]">
+                    {task.user.firstName[0]}{task.user.lastName[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <span>{task.user.firstName} {task.user.lastName}</span>
+              </div>
               {task.dueAt && (
                 <div className={`flex items-center gap-1 text-xs ${
                   isPast(new Date(task.dueAt)) && !task.completed 
@@ -202,14 +259,24 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
               )}
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => startTransition(() => deleteTask(task.id))}
-            className="h-8 w-8 p-0 opacity-70 hover:opacity-100 transition-opacity duration-200 hover:bg-red-100 hover:text-red-600"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditingTask(task)}
+              className="h-8 w-8 p-0 opacity-70 hover:opacity-100 transition-opacity duration-200 hover:bg-blue-100 hover:text-blue-600"
+            >
+              <Edit className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => startTransition(() => deleteTask(task.id))}
+              className="h-8 w-8 p-0 opacity-70 hover:opacity-100 transition-opacity duration-200 hover:bg-red-100 hover:text-red-600"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -250,12 +317,20 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold">Your Tasks</h1>
           <p className="text-muted-foreground">Manage your tasks with AI assistance</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant={showStatusPane ? "default" : "outline"}
+            onClick={() => setShowStatusPane(!showStatusPane)}
+            className="gap-2"
+          >
+            <Users className="h-4 w-4" />
+            Team Status
+          </Button>
           <Button
             variant="outline"
             onClick={() => setShowAIChat(!showAIChat)}
@@ -280,6 +355,94 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
           </Button>
         </div>
       </div>
+
+      {/* Team Status Pane */}
+      {showStatusPane && (
+        <Card className="border-purple-200 bg-purple-50">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Team Task Status
+            </CardTitle>
+            <CardDescription>Track task completion across your team</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {teamMembers.map((member) => {
+                const memberTasks = tasks.filter(t => t.user.id === member.id);
+                const completedCount = memberTasks.filter(t => t.completed).length;
+                const pendingCount = memberTasks.filter(t => !t.completed).length;
+                const overdueCount = memberTasks.filter(
+                  t => !t.completed && t.dueAt && isPast(new Date(t.dueAt))
+                ).length;
+                
+                return (
+                  <Card key={member.id} className="bg-white">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <Avatar>
+                          <AvatarImage src={member.avatarUrl || undefined} />
+                          <AvatarFallback>
+                            {member.firstName[0]}{member.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-sm truncate">
+                            {member.firstName} {member.lastName}
+                          </h4>
+                          <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-muted-foreground">Total Tasks:</span>
+                          <Badge variant="outline">{memberTasks.length}</Badge>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-green-600">Completed:</span>
+                          <Badge className="bg-green-100 text-green-800 border-green-200">
+                            {completedCount}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-orange-600">Pending:</span>
+                          <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+                            {pendingCount}
+                          </Badge>
+                        </div>
+                        {overdueCount > 0 && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-red-600">Overdue:</span>
+                            <Badge className="bg-red-100 text-red-800 border-red-200">
+                              {overdueCount}
+                            </Badge>
+                          </div>
+                        )}
+                        <div className="mt-2 pt-2 border-t">
+                          <div className="text-xs text-muted-foreground mb-1">Completion Rate</div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                              style={{ 
+                                width: `${memberTasks.length > 0 ? (completedCount / memberTasks.length) * 100 : 0}%` 
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs text-center mt-1 font-medium">
+                            {memberTasks.length > 0 
+                              ? Math.round((completedCount / memberTasks.length) * 100) 
+                              : 0}%
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* AI Chat Panel */}
       {showAIChat && (
@@ -315,6 +478,27 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
         <AudioTaskCreator onTranscription={handleAudioTranscription} />
       )}
 
+      {/* Edit Task Form */}
+      {editingTask && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="text-lg">Edit Task</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EditTaskForm
+              task={editingTask}
+              projects={projects}
+              organizations={organizations}
+              teamMembers={teamMembers}
+              onCancel={() => setEditingTask(null)}
+              onSubmit={() => {
+                setEditingTask(null);
+              }}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Create Task Form */}
       {showCreateForm && (
         <Card className="border-green-200 bg-green-50">
@@ -324,6 +508,8 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
           <CardContent>
             <CreateTaskForm
               projects={projects}
+              organizations={organizations}
+              teamMembers={teamMembers}
               onCancel={() => setShowCreateForm(false)}
               onSubmit={() => {
                 setShowCreateForm(false);
@@ -399,14 +585,22 @@ export function SimplifiedTaskPanel({ tasks, projects }: SimplifiedTaskPanelProp
 
 function CreateTaskForm({ 
   projects, 
+  organizations,
+  teamMembers,
   onCancel, 
   onSubmit 
 }: { 
   projects: Project[]; 
+  organizations: Organization[];
+  teamMembers: TeamMember[];
   onCancel: () => void;
   onSubmit: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
+  const [selectedOrg, setSelectedOrg] = useState<string>('');
+  const filteredProjects = selectedOrg 
+    ? projects.filter(p => p.organizationId === selectedOrg)
+    : projects;
 
   return (
     <form 
@@ -425,15 +619,50 @@ function CreateTaskForm({
         </div>
         
         <div className="space-y-2">
+          <label className="text-sm font-medium">Assign To</label>
+          <Select name="userId">
+            <SelectTrigger>
+              <SelectValue placeholder="Select team member" />
+            </SelectTrigger>
+            <SelectContent>
+              {teamMembers.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  {member.firstName} {member.lastName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {organizations.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Organization</label>
+            <Select onValueChange={setSelectedOrg} value={selectedOrg}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select organization (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {organizations.map((org) => (
+                  <SelectItem key={org.id} value={org.id}>
+                    {org.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        
+        <div className="space-y-2">
           <label className="text-sm font-medium">Project</label>
           <Select name="projectId">
             <SelectTrigger>
               <SelectValue placeholder="Select a project (optional)" />
             </SelectTrigger>
             <SelectContent>
-              {projects.map((project) => (
+              {filteredProjects.map((project) => (
                 <SelectItem key={project.id} value={project.id}>
                   {project.name}
+                  {project.organization && ` (${project.organization.name})`}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -480,6 +709,144 @@ function CreateTaskForm({
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending ? 'Creating...' : 'Create Task'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function EditTaskForm({ 
+  task,
+  projects, 
+  organizations,
+  teamMembers,
+  onCancel, 
+  onSubmit 
+}: { 
+  task: Task;
+  projects: Project[]; 
+  organizations: Organization[];
+  teamMembers: TeamMember[];
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [selectedOrg, setSelectedOrg] = useState<string>(task.project?.organizationId || '');
+  const filteredProjects = selectedOrg 
+    ? projects.filter(p => p.organizationId === selectedOrg)
+    : projects;
+  
+  const defaultDueDate = task.dueAt ? format(new Date(task.dueAt), 'yyyy-MM-dd') : '';
+  const defaultDueTime = task.dueAt ? format(new Date(task.dueAt), 'HH:mm') : '';
+
+  return (
+    <form 
+      action={(formData) => {
+        startTransition(async () => {
+          await updateTask(task.id, formData);
+          onSubmit();
+        });
+      }}
+      className="space-y-4"
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Task Name</label>
+          <Input name="name" placeholder="What needs to be done?" defaultValue={task.name} required />
+        </div>
+        
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Assign To</label>
+          <Select name="userId" defaultValue={task.user.id}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select team member" />
+            </SelectTrigger>
+            <SelectContent>
+              {teamMembers.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  {member.firstName} {member.lastName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {organizations.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Organization</label>
+            <Select onValueChange={setSelectedOrg} value={selectedOrg}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select organization (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {organizations.map((org) => (
+                  <SelectItem key={org.id} value={org.id}>
+                    {org.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Project</label>
+          <Select name="projectId" defaultValue={task.project?.id}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a project (optional)" />
+            </SelectTrigger>
+            <SelectContent>
+              {filteredProjects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                  {project.organization && ` (${project.organization.name})`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Due Date</label>
+          <Input name="dueDate" type="date" defaultValue={defaultDueDate} />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Due Time</label>
+          <Input name="dueTime" type="time" defaultValue={defaultDueTime} />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Priority</label>
+          <Select name="priority" defaultValue={task.priority}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="LOW">Low</SelectItem>
+              <SelectItem value="MEDIUM">Medium</SelectItem>
+              <SelectItem value="HIGH">High</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Description</label>
+        <Textarea
+          name="description"
+          placeholder="Add more details about this task..."
+          rows={3}
+          defaultValue={task.description}
+        />
+      </div>
+
+      <div className="flex gap-2 justify-end">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isPending}>
+          {isPending ? 'Updating...' : 'Update Task'}
         </Button>
       </div>
     </form>
